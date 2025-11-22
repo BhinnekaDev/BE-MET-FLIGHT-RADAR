@@ -1,28 +1,51 @@
 /* eslint-disable */
-import { join } from 'path';
-import { readFileSync, existsSync } from 'fs';
+import { join, extname } from 'path';
+import { readFileSync, existsSync, statSync } from 'fs';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const jsonPath = join(__dirname, '../public/openapi.json');
-    if (!existsSync(jsonPath)) {
-      return res.status(404).json({ message: 'openapi.json not found' });
-    }
+    const reqUrl = req.url || '/';
 
-    if (req.url === '/openapi.json') {
+    if (reqUrl === '/openapi.json') {
+      const jsonPath = join(__dirname, '../public/openapi.json');
+      if (!existsSync(jsonPath)) {
+        return res.status(404).json({ message: 'openapi.json not found' });
+      }
       const json = readFileSync(jsonPath, 'utf-8');
       res.setHeader('Content-Type', 'application/json');
       return res.status(200).send(json);
     }
 
-    if (req.url?.startsWith('/docs')) {
-      const docsPath = join(__dirname, '../public', req.url);
+    if (reqUrl.startsWith('/docs')) {
+      let docsPath = join(__dirname, '../public', reqUrl);
+
       if (existsSync(docsPath)) {
-        const html = readFileSync(docsPath, 'utf-8');
-        res.setHeader('Content-Type', 'text/html');
-        return res.status(200).send(html);
+        const stats = statSync(docsPath);
+
+        if (stats.isDirectory()) {
+          docsPath = join(docsPath, 'index.html');
+        }
+
+        if (existsSync(docsPath)) {
+          const ext = extname(docsPath).toLowerCase();
+          let contentType = 'text/html';
+          if (ext === '.css') contentType = 'text/css';
+          else if (ext === '.js') contentType = 'application/javascript';
+          else if (ext === '.json') contentType = 'application/json';
+          else if (ext === '.png') contentType = 'image/png';
+          else if (ext === '.jpg' || ext === '.jpeg')
+            contentType = 'image/jpeg';
+          else if (ext === '.svg') contentType = 'image/svg+xml';
+          else if (ext === '.ico') contentType = 'image/x-icon';
+
+          const content = readFileSync(docsPath);
+          res.setHeader('Content-Type', contentType);
+          return res.status(200).send(content);
+        }
       }
+
+      return res.status(404).send('Docs Not Found');
     }
 
     res.status(404).send('Not Found');
