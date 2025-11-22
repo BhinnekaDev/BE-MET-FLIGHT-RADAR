@@ -1,30 +1,20 @@
 import { join } from 'path';
+import { writeFileSync } from 'fs';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { SwaggerModule } from '@nestjs/swagger';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { SwaggerModule, OpenAPIObject } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
-async function generate() {
+void (async () => {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-
-  const document = SwaggerModule.createDocument(app, {
+  const document: OpenAPIObject = SwaggerModule.createDocument(app, {
     openapi: '3.1.0',
-    info: {
-      title: 'MET Flight Radar API',
-      version: '1.0.0',
-      description: 'API Documentation',
-    },
+    info: { title: 'MET Flight Radar API', version: '1.0.0' },
   });
 
-  const publicDir = join(__dirname, '..', 'public');
-  if (!existsSync(publicDir)) mkdirSync(publicDir, { recursive: true });
-
-  const filePath = join(publicDir, 'openapi.json');
-  writeFileSync(filePath, JSON.stringify(document, null, 2));
-
-  console.log('✅ openapi.json generated in public folder');
+  writeFileSync(
+    join(__dirname, '..', 'public/openapi.json'),
+    JSON.stringify(document, null, 2),
+  );
   await app.close();
-}
-
-void generate();
+})();

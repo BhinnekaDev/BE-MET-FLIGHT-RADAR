@@ -18,8 +18,7 @@
   },
   "info": {
     "title": "MET Flight Radar API",
-    "version": "1.0.0",
-    "description": "API Documentation"
+    "version": "1.0.0"
   },
   "components": {
     "schemas": {}
