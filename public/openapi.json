@@ -1,0 +1,27 @@
+{
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "MET Flight Radar API",
+    "version": "1.0.0",
+    "description": "API Documentation"
+  },
+  "components": {
+    "schemas": {}
+  }
+}
