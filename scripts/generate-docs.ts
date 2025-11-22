@@ -12,12 +12,6 @@ const html = `
 <head>
   <meta charset="utf-8">
   <title>MET Flight Radar API Docs</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/api-reference/dist/style.css">
-  <style>
-    .scalar-introduction {
-      display: none !important;
-    }
-  </style>
 </head>
 <body>
   <div id="api-reference"></div>
