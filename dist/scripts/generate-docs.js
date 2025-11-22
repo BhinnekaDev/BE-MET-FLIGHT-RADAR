@@ -12,8 +12,12 @@ const html = `
 <head>
   <meta charset="utf-8">
   <title>MET Flight Radar API Docs</title>
-  <!-- CSS dari CDN -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/api-reference/dist/style.css">
+  <style>
+    .scalar-introduction {
+      display: none !important;
+    }
+  </style>
 </head>
 <body>
   <div id="api-reference"></div>
@@ -35,5 +39,5 @@ const html = `
 </html>
 `;
 (0, fs_1.writeFileSync)((0, path_1.join)(docsDir, 'index.html'), html);
-console.log('✅ /docs/index.html generated');
+console.log('✅ /docs/index.html generated (introduction hidden)');
 //# sourceMappingURL=generate-docs.js.map
