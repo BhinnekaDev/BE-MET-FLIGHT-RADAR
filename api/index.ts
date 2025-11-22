@@ -16,8 +16,8 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).send(json);
     }
 
-    if (req.url === '/docs' || req.url === '/') {
-      return res.redirect(302, '../public/docs/');
+    if (req.url === '/' || req.url === '/docs') {
+      return res.redirect(302, '/docs/index.html');
     }
 
     res.status(404).send('Not Found');
