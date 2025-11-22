@@ -33,7 +33,9 @@ export class AircraftService {
     try {
       const url = `https://opensky-network.org/api/states/all?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`;
 
-      const response = await axios.get(url);
+      const response = await axios.get(url, {
+        timeout: 15000, // 15 detik
+      });
       const states = response.data.states || [];
 
       this.cache = states;
