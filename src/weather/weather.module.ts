@@ -1,9 +1,13 @@
 import { Module } from '@nestjs/common';
-import { WeatherService } from './weather.service';
+import { SupabaseModule } from '../../supabase/supabase.module';
+
 import { WeatherController } from './weather.controller';
+import { WeatherGateway } from './weather.gateway';
+import { WeatherService } from './weather.service';
 
 @Module({
-  providers: [WeatherService],
-  controllers: [WeatherController]
+  imports: [SupabaseModule],
+  providers: [WeatherService, WeatherGateway],
+  controllers: [WeatherController],
 })
 export class WeatherModule {}
