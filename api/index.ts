@@ -3,8 +3,8 @@ import { readFileSync } from 'fs';
 import { NestFactory } from '@nestjs/core';
 import { Request, Response } from 'express';
 import { AppModule } from '../src/app.module';
-import { NestExpressApplication } from '@nestjs/platform-express';
 import { apiReference } from '@scalar/nestjs-api-reference';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 let cachedApp: NestExpressApplication;
 
@@ -20,8 +20,10 @@ async function bootstrap() {
         join(__dirname, '..', 'public/openapi.json'),
         'utf-8',
       );
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       res.type('json').send(json);
     });
+
     app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
 
     await app.init();
@@ -36,7 +38,9 @@ export default async function handler(req: Request, res: Response) {
     const expressApp = app.getHttpAdapter().getInstance();
     expressApp(req, res);
   } catch (err) {
-    console.error(err); // log error supaya bisa dicek di Vercel
-    res.status(500).json({ message: 'Internal Server Error', error: err });
+    console.error(err);
+    res
+      .status(500)
+      .json({ message: 'Internal Server Error', error: err?.message || err });
   }
 }

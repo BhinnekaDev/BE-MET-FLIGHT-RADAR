@@ -31,7 +31,9 @@ async function handler(req, res) {
     }
     catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Internal Server Error', error: err });
+        res
+            .status(500)
+            .json({ message: 'Internal Server Error', error: err?.message || err });
     }
 }
 //# sourceMappingURL=index.js.map
