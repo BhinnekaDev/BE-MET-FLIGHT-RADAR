@@ -5,7 +5,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const jsonPath = join(__dirname, '/openapi.json');
+    const jsonPath = join(__dirname, '../public/openapi.json');
     if (!existsSync(jsonPath)) {
       return res.status(404).json({ message: 'openapi.json not found' });
     }

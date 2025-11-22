@@ -5,7 +5,7 @@ const path_1 = require("path");
 const fs_1 = require("fs");
 function handler(req, res) {
     try {
-        const jsonPath = (0, path_1.join)(__dirname, '/openapi.json');
+        const jsonPath = (0, path_1.join)(__dirname, '../public/openapi.json');
         if (!(0, fs_1.existsSync)(jsonPath)) {
             return res.status(404).json({ message: 'openapi.json not found' });
         }
