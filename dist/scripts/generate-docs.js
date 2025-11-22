@@ -6,31 +6,20 @@ const docsDir = (0, path_1.join)(__dirname, '../public/docs');
 if (!(0, fs_1.existsSync)(docsDir)) {
     (0, fs_1.mkdirSync)(docsDir, { recursive: true });
 }
-const cssSrc = (0, path_1.join)(__dirname, '../node_modules/@scalar/api-reference/dist/style.css');
-const cssDest = (0, path_1.join)(docsDir, 'style.css');
-if ((0, fs_1.existsSync)(cssSrc)) {
-    (0, fs_1.copyFileSync)(cssSrc, cssDest);
-    console.log('✅ style.css copied to /docs');
-}
-else {
-    console.warn('⚠️ style.css not found in node_modules, UI mungkin tidak tampil rapi');
-}
 const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <title>MET Flight Radar API Docs</title>
-  <link rel="stylesheet" href="./style.css">
+  <!-- CSS dari CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/api-reference/dist/style.css">
 </head>
 <body>
   <div id="api-reference"></div>
 
-  <!-- Scalar API Reference JS -->
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-
   <script>
-    // Inisialisasi API Reference
     document.addEventListener("DOMContentLoaded", function() {
       if (window.Scalar) {
         Scalar.createApiReference('#api-reference', {
