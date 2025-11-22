@@ -6,8 +6,9 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build && npm run generate:openapi",
+    "build": "nest build && npm run generate:openapi && npm run generate:docs",
     "generate:openapi": "ts-node scripts/generate-openapi.ts",
+    "generate:docs": "ts-node scripts/generate-docs.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",

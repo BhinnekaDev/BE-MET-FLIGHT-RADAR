@@ -1,32 +1,25 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const fs_1 = require("fs");
 const path_1 = require("path");
-const docsDir = (0, path_1.join)(__dirname, '../public/docs');
-if (!(0, fs_1.existsSync)(docsDir)) {
-    (0, fs_1.mkdirSync)(docsDir, { recursive: true });
-}
-const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>MET Flight Radar API Docs</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/nestjs-api-reference/dist/styles.css">
-</head>
-<body>
-  <div id="api-reference"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@scalar/nestjs-api-reference/dist/main.js"></script>
-  <script>
-    ApiReference.init({
-      element: document.getElementById('api-reference'),
-      url: '/openapi.json',
-      theme: 'default'
+const fs_1 = require("fs");
+const core_1 = require("@nestjs/core");
+const app_module_1 = require("../src/app.module");
+const swagger_1 = require("@nestjs/swagger");
+async function generateOpenApi() {
+    const app = await core_1.NestFactory.create(app_module_1.AppModule, {
+        logger: false,
     });
-  </script>
-</body>
-</html>
-`;
-(0, fs_1.writeFileSync)((0, path_1.join)(docsDir, 'index.html'), html);
-console.log('✅ /docs/index.html generated');
+    const document = swagger_1.SwaggerModule.createDocument(app, {
+        openapi: '3.1.0',
+        info: { title: 'MET Flight Radar API', version: '1.0.0' },
+    });
+    const outputPath = (0, path_1.join)(__dirname, '..', 'public', 'openapi.json');
+    (0, fs_1.writeFileSync)(outputPath, JSON.stringify(document, null, 2));
+    console.log(`✅ OpenAPI document generated at ${outputPath}`);
+    await app.close();
+}
+void generateOpenApi().catch((err) => {
+    console.error('❌ Failed to generate OpenAPI document:', err);
+    process.exit(1);
+});
 //# sourceMappingURL=generate-openapi.js.map

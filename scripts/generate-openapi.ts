@@ -1,32 +1,29 @@
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
+import { writeFileSync } from 'fs';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../src/app.module';
+import { SwaggerModule, OpenAPIObject } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
-const docsDir = join(__dirname, '../public/docs');
-if (!existsSync(docsDir)) {
-  mkdirSync(docsDir, { recursive: true });
+async function generateOpenApi() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: false,
+  });
+
+  const document: OpenAPIObject = SwaggerModule.createDocument(app, {
+    openapi: '3.1.0',
+    info: { title: 'MET Flight Radar API', version: '1.0.0' },
+  });
+
+  const outputPath = join(__dirname, '..', 'public', 'openapi.json');
+  writeFileSync(outputPath, JSON.stringify(document, null, 2));
+
+  console.log(`✅ OpenAPI document generated at ${outputPath}`);
+
+  await app.close();
 }
 
-const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>MET Flight Radar API Docs</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/nestjs-api-reference/dist/styles.css">
-</head>
-<body>
-  <div id="api-reference"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@scalar/nestjs-api-reference/dist/main.js"></script>
-  <script>
-    ApiReference.init({
-      element: document.getElementById('api-reference'),
-      url: '/openapi.json',
-      theme: 'default'
-    });
-  </script>
-</body>
-</html>
-`;
-
-writeFileSync(join(docsDir, 'index.html'), html);
-console.log('✅ /docs/index.html generated');
+void generateOpenApi().catch((err) => {
+  console.error('❌ Failed to generate OpenAPI document:', err);
+  process.exit(1);
+});
