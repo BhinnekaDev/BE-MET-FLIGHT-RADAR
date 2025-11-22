@@ -1,18 +1,28 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>MET Flight Radar API Docs</title>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <div id="api-reference"></div>
-  
+
+  <!-- Scalar API Reference JS -->
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+
   <script>
-    Scalar.createApiReference('#api-reference', {
-      url: '/openapi.json',
-      theme: 'default'
+    // Inisialisasi API Reference
+    document.addEventListener("DOMContentLoaded", function() {
+      if (window.Scalar) {
+        Scalar.createApiReference('#api-reference', {
+          url: '/openapi.json',
+          theme: 'default'
+        });
+      } else {
+        console.error("Scalar API Reference failed to load.");
+      }
     });
   </script>
 </body>
