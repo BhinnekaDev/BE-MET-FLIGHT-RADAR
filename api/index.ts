@@ -22,30 +22,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (reqUrl.startsWith('/docs')) {
-      let docsPath = resolve(__dirname, '../public', reqUrl);
+      let relativePath = reqUrl.replace(/^\/docs/, '');
+      if (!relativePath || relativePath === '/') relativePath = '/index.html';
+
+      const docsPath = join(process.cwd(), 'public', 'docs', relativePath);
+
       if (existsSync(docsPath)) {
-        const stats = statSync(docsPath);
-        if (stats.isDirectory()) {
-          docsPath = join(docsPath, 'index.html');
-        }
+        const ext = extname(docsPath).toLowerCase();
+        let contentType = 'text/html';
+        if (ext === '.css') contentType = 'text/css';
+        else if (ext === '.js') contentType = 'application/javascript';
+        else if (ext === '.json') contentType = 'application/json';
+        else if (ext === '.png') contentType = 'image/png';
+        else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+        else if (ext === '.svg') contentType = 'image/svg+xml';
+        else if (ext === '.ico') contentType = 'image/x-icon';
 
-        if (existsSync(docsPath)) {
-          const ext = extname(docsPath).toLowerCase();
-          let contentType = 'text/html';
-          if (ext === '.css') contentType = 'text/css';
-          else if (ext === '.js') contentType = 'application/javascript';
-          else if (ext === '.json') contentType = 'application/json';
-          else if (ext === '.png') contentType = 'image/png';
-          else if (ext === '.jpg' || ext === '.jpeg')
-            contentType = 'image/jpeg';
-          else if (ext === '.svg') contentType = 'image/svg+xml';
-          else if (ext === '.ico') contentType = 'image/x-icon';
-
-          const content = readFileSync(docsPath);
-          res.setHeader('Content-Type', contentType);
-          return res.status(200).send(content);
-        }
+        const content = readFileSync(docsPath);
+        res.setHeader('Content-Type', contentType);
+        return res.status(200).send(content);
       }
+
       return res.status(404).send('Docs Not Found');
     }
 
