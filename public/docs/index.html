@@ -1,12 +1,4 @@
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
 
-const docsDir = join(__dirname, '../public/docs');
-if (!existsSync(docsDir)) {
-  mkdirSync(docsDir, { recursive: true });
-}
-
-const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -26,7 +18,3 @@ const html = `
   </script>
 </body>
 </html>
-`;
-
-writeFileSync(join(docsDir, 'index.html'), html);
-console.log('✅ /docs/index.html generated');

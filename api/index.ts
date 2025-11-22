@@ -17,7 +17,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.url === '/docs' || req.url === '/') {
-      return res.redirect(302, '/openapi.json');
+      return res.redirect(302, '/docs/index.html');
     }
 
     res.status(404).send('Not Found');

@@ -15,7 +15,7 @@ function handler(req, res) {
             return res.status(200).send(json);
         }
         if (req.url === '/docs' || req.url === '/') {
-            return res.redirect(302, '/openapi.json');
+            return res.redirect(302, '/docs/index.html');
         }
         res.status(404).send('Not Found');
     }
