@@ -1,28 +1,27 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>MET Flight Radar API Docs</title>
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/@scalar/api-reference/dist/style.css"
-    />
-  </head>
-  <body>
-    <div id="api-reference"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        if (window.Scalar) {
-          Scalar.createApiReference('#api-reference', {
-            url: '/openapi.json',
-            theme: 'default',
-          });
-        } else {
-          console.error('Scalar API Reference failed to load.');
-        }
-      });
-    </script>
-  </body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MET Flight Radar API Docs</title>
+  <!-- CSS dari CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/api-reference/dist/style.css">
+</head>
+<body>
+  <div id="api-reference"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (window.Scalar) {
+        Scalar.createApiReference('#api-reference', {
+          url: '/openapi.json',
+          theme: 'default'
+        });
+      } else {
+        console.error("Scalar API Reference failed to load.");
+      }
+    });
+  </script>
+</body>
 </html>

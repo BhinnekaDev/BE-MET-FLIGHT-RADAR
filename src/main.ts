@@ -18,13 +18,6 @@ async function bootstrap() {
 
   app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
 
-  app.use((req, res, next) => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    next();
-  });
-
   app.useStaticAssets(join(__dirname, '..', 'public'));
 
   const port = process.env.PORT ? +process.env.PORT : 3000;
