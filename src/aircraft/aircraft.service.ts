@@ -57,11 +57,12 @@ export class AircraftService {
         origin_country,
         longitude,
         latitude,
-        altitude,
+        altitude, // ignore
         ,
-        velocity,
-        heading,
+        velocity, // kecepatan
+        heading, // arah
         ,
+        // ignore
         timestamp,
       ] = state;
 
