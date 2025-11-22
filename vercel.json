@@ -2,7 +2,8 @@
   "version": 2,
   "builds": [{ "src": "api/index.ts", "use": "@vercel/node" }],
   "routes": [
-    { "src": "/docs", "dest": "/api/index.ts" },
+    { "src": "/openapi.json", "dest": "/api/index.ts" },
+    { "src": "/docs/(.*)", "dest": "/public/docs/$1" },
     { "src": "/(.*)", "dest": "/api/index.ts" }
   ]
 }

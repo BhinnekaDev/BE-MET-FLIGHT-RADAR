@@ -5,7 +5,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const jsonPath = join(__dirname, '../public/openapi.json');
+    const jsonPath = join(__dirname, '/openapi.json');
     if (!existsSync(jsonPath)) {
       return res.status(404).json({ message: 'openapi.json not found' });
     }
@@ -17,7 +17,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.url === '/docs' || req.url === '/') {
-      return res.redirect(302, '/docs/index.html');
+      return res.redirect(302, '/docs/');
     }
 
     res.status(404).send('Not Found');
