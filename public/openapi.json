@@ -28,6 +28,20 @@
           "Aircraft"
         ]
       }
+    },
+    "/weather/fetch-all": {
+      "post": {
+        "operationId": "WeatherController_fetchAll",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Weather"
+        ]
+      }
     }
   },
   "info": {

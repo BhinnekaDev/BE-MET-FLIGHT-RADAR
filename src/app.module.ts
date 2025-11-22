@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AircraftModule } from './aircraft/aircraft.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { WeatherModule } from './weather/weather.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { AppService } from './app.service';
       envFilePath: '.env',
     }),
     AircraftModule,
+    WeatherModule,
   ],
   controllers: [AppController],
   providers: [AppService],
