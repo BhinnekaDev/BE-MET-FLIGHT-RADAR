@@ -1,29 +1,37 @@
-import express from 'express';
+import { join } from 'path';
+import { readFileSync } from 'fs';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { ExpressAdapter } from '@nestjs/platform-express';
-import { createServer, proxy } from 'aws-serverless-express';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
-let cachedServer: any;
+let cachedApp: NestExpressApplication;
 
-async function bootstrapServer() {
-  const expressApp = express();
+async function bootstrap() {
+  if (!cachedApp) {
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+      logger: false,
+    });
 
-  const app = await NestFactory.create<NestExpressApplication>(
-    AppModule,
-    new ExpressAdapter(expressApp),
-  );
+    app.useStaticAssets(join(__dirname, '..', 'public'));
 
-  app.useStaticAssets('public');
-  await app.init();
-  return createServer(expressApp);
+    app.use('/openapi.json', (req, res) => {
+      const json = readFileSync(
+        join(__dirname, '..', 'public/openapi.json'),
+        'utf-8',
+      );
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      res.type('json').send(json);
+    });
+
+    cachedApp = app;
+  }
+  return cachedApp;
 }
 
-export default async function handler(req, res) {
-  if (!cachedServer) {
-    cachedServer = await bootstrapServer();
-  }
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const app = await bootstrap();
+
   // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-  return proxy(cachedServer, req, res, 'PROMISE').promise;
+  app.getHttpAdapter().getInstance()(req, res);
 }

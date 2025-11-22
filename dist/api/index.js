@@ -1,26 +1,27 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = handler;
-const express_1 = __importDefault(require("express"));
+const path_1 = require("path");
+const fs_1 = require("fs");
 const core_1 = require("@nestjs/core");
 const app_module_1 = require("../src/app.module");
-const platform_express_1 = require("@nestjs/platform-express");
-const aws_serverless_express_1 = require("aws-serverless-express");
-let cachedServer;
-async function bootstrapServer() {
-    const expressApp = (0, express_1.default)();
-    const app = await core_1.NestFactory.create(app_module_1.AppModule, new platform_express_1.ExpressAdapter(expressApp));
-    app.useStaticAssets('public');
-    await app.init();
-    return (0, aws_serverless_express_1.createServer)(expressApp);
+let cachedApp;
+async function bootstrap() {
+    if (!cachedApp) {
+        const app = await core_1.NestFactory.create(app_module_1.AppModule, {
+            logger: false,
+        });
+        app.useStaticAssets((0, path_1.join)(__dirname, '..', 'public'));
+        app.use('/openapi.json', (req, res) => {
+            const json = (0, fs_1.readFileSync)((0, path_1.join)(__dirname, '..', 'public/openapi.json'), 'utf-8');
+            res.type('json').send(json);
+        });
+        cachedApp = app;
+    }
+    return cachedApp;
 }
 async function handler(req, res) {
-    if (!cachedServer) {
-        cachedServer = await bootstrapServer();
-    }
-    return (0, aws_serverless_express_1.proxy)(cachedServer, req, res, 'PROMISE').promise;
+    const app = await bootstrap();
+    app.getHttpAdapter().getInstance()(req, res);
 }
 //# sourceMappingURL=index.js.map

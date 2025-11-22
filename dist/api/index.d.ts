@@ -1,1 +1,2 @@
-export default function handler(req: any, res: any): Promise<import("aws-serverless-express").Response>;
+import { VercelRequest, VercelResponse } from '@vercel/node';
+export default function handler(req: VercelRequest, res: VercelResponse): Promise<void>;
