@@ -16,8 +16,13 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).send(json);
     }
 
-    if (req.url === '/' || req.url === '/docs') {
-      return res.redirect(302, '/docs/index.html');
+    if (req.url?.startsWith('/docs')) {
+      const docsPath = join(__dirname, '../public', req.url);
+      if (existsSync(docsPath)) {
+        const html = readFileSync(docsPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        return res.status(200).send(html);
+      }
     }
 
     res.status(404).send('Not Found');
