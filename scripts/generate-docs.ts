@@ -15,6 +15,8 @@ const html = `
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/api-reference/dist/style.css">
 </head>
 <body>
+  <div id="api-reference"></div>
+
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
