@@ -12,22 +12,12 @@ const html = `
 <head>
   <meta charset="utf-8">
   <title>MET Flight Radar API Docs</title>
-  <!-- CSS Scalar API Reference versi resmi -->
-  <link 
-    rel="stylesheet" 
-    href="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.39.3/dist/style.css"
-  >
 </head>
 <body>
   <div id="api-reference"></div>
-
-  <!-- Script utama Scalar API Reference -->
-  <script 
-    src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.39.3/dist/main.js">
-  </script>
-
+  
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   <script>
-    // Inisialisasi API Reference
     Scalar.createApiReference('#api-reference', {
       url: '/openapi.json',
       theme: 'default'
