@@ -24,6 +24,7 @@ async function bootstrap() {
       res.type('json').send(json);
     });
 
+    await app.init();
     cachedApp = app;
   }
   return cachedApp;

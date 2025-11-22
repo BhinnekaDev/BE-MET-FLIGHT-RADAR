@@ -17,15 +17,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppController = void 0;
 const express_1 = __importDefault(require("express"));
-const app_service_1 = require("./app.service");
 const common_1 = require("@nestjs/common");
 let AppController = class AppController {
-    appService;
-    constructor(appService) {
-        this.appService = appService;
-    }
     root(res) {
-        return res.json({ message: this.appService.getHello() });
+        return res.redirect('/docs');
     }
 };
 exports.AppController = AppController;
@@ -37,7 +32,6 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], AppController.prototype, "root", null);
 exports.AppController = AppController = __decorate([
-    (0, common_1.Controller)(),
-    __metadata("design:paramtypes", [app_service_1.AppService])
+    (0, common_1.Controller)()
 ], AppController);
 //# sourceMappingURL=app.controller.js.map

@@ -16,6 +16,7 @@ async function bootstrap() {
             const json = (0, fs_1.readFileSync)((0, path_1.join)(__dirname, '..', 'public/openapi.json'), 'utf-8');
             res.type('json').send(json);
         });
+        await app.init();
         cachedApp = app;
     }
     return cachedApp;
