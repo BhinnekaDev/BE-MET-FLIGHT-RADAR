@@ -1,4 +1,4 @@
-import express from 'express';
+import type { Response } from 'express';
 export declare class AppController {
-    root(res: express.Response): void;
+    root(res: Response): void;
 }

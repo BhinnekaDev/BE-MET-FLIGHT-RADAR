@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { Request, Response } from 'express';
 import { AppModule } from '../src/app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { apiReference } from '@scalar/nestjs-api-reference';
 
 let cachedApp: NestExpressApplication;
 
@@ -13,18 +14,22 @@ async function bootstrap() {
       logger: false,
     });
 
+    // Serve static assets dari folder public
     app.useStaticAssets(join(__dirname, '..', 'public'));
 
+    // Serve prebuilt OpenAPI JSON
     app.use('/openapi.json', (req, res) => {
       const json = readFileSync(
         join(__dirname, '..', 'public/openapi.json'),
         'utf-8',
       );
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       res.type('json').send(json);
     });
 
-    await app.init();
+    // Daftarkan Swagger UI /docs
+    app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
+
+    await app.init(); // wajib di serverless supaya Nest siap sebelum handle request
     cachedApp = app;
   }
   return cachedApp;
@@ -33,5 +38,7 @@ async function bootstrap() {
 export default async function handler(req: Request, res: Response) {
   const app = await bootstrap();
   const expressApp = app.getHttpAdapter().getInstance();
+
+  // Forward request ke Nest Express
   expressApp(req, res);
 }
