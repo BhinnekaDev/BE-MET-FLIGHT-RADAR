@@ -5,14 +5,12 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import axios from 'axios';
-import { WeatherGateway } from './weather.gateway';
 
 @Injectable()
 export class WeatherService {
   constructor(
     @Inject('SUPABASE_CLIENT')
     private readonly supabase: SupabaseClient,
-    private readonly weatherGateway: WeatherGateway,
   ) {}
 
   private async fetchWeatherFromApi(lat: number, lon: number) {
@@ -133,11 +131,6 @@ export class WeatherService {
             })),
         ),
       );
-
-      this.weatherGateway.broadcastBulkUpdate({
-        total_airports: airports.length,
-        results,
-      });
 
       return { total_airports: airports.length, results };
     } catch (error: any) {
