@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
 const app_module_1 = require("./app.module");
 const core_1 = require("@nestjs/core");
 const nestjs_api_reference_1 = require("@scalar/nestjs-api-reference");
@@ -21,9 +22,10 @@ async function bootstrap() {
         url: '/openapi.json',
         theme: 'default',
     }));
-    await app.listen(process.env.PORT ? +process.env.PORT : 3000);
-    console.log(`🚀 Server ready at http://localhost:${process.env.PORT ?? 3000}`);
-    console.log(`📄 Docs available at http://localhost:${process.env.PORT ?? 3000}/docs`);
+    const port = process.env.PORT ? +process.env.PORT : 3000;
+    await app.listen(port);
+    console.log(`🚀 Server ready at http://localhost:${port}`);
+    console.log(`📄 Docs available at http://localhost:${port}/docs`);
 }
 void bootstrap();
 //# sourceMappingURL=main.js.map

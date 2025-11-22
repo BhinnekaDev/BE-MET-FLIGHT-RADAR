@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { AppModule } from './app.module';
 import { NestFactory } from '@nestjs/core';
 import { apiReference } from '@scalar/nestjs-api-reference';
@@ -29,13 +30,11 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(process.env.PORT ? +process.env.PORT : 3000);
-  console.log(
-    `🚀 Server ready at http://localhost:${process.env.PORT ?? 3000}`,
-  );
-  console.log(
-    `📄 Docs available at http://localhost:${process.env.PORT ?? 3000}/docs`,
-  );
+  const port = process.env.PORT ? +process.env.PORT : 3000;
+  await app.listen(port);
+
+  console.log(`🚀 Server ready at http://localhost:${port}`);
+  console.log(`📄 Docs available at http://localhost:${port}/docs`);
 }
 
 void bootstrap();
