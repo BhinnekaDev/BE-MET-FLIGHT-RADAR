@@ -14,10 +14,7 @@ async function bootstrap() {
       logger: false,
     });
 
-    // Serve static assets dari folder public
     app.useStaticAssets(join(__dirname, '..', 'public'));
-
-    // Serve prebuilt OpenAPI JSON
     app.use('/openapi.json', (req, res) => {
       const json = readFileSync(
         join(__dirname, '..', 'public/openapi.json'),
@@ -25,20 +22,21 @@ async function bootstrap() {
       );
       res.type('json').send(json);
     });
-
-    // Daftarkan Swagger UI /docs
     app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
 
-    await app.init(); // wajib di serverless supaya Nest siap sebelum handle request
+    await app.init();
     cachedApp = app;
   }
   return cachedApp;
 }
 
 export default async function handler(req: Request, res: Response) {
-  const app = await bootstrap();
-  const expressApp = app.getHttpAdapter().getInstance();
-
-  // Forward request ke Nest Express
-  expressApp(req, res);
+  try {
+    const app = await bootstrap();
+    const expressApp = app.getHttpAdapter().getInstance();
+    expressApp(req, res);
+  } catch (err) {
+    console.error(err); // log error supaya bisa dicek di Vercel
+    res.status(500).json({ message: 'Internal Server Error', error: err });
+  }
 }

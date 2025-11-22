@@ -24,8 +24,14 @@ async function bootstrap() {
     return cachedApp;
 }
 async function handler(req, res) {
-    const app = await bootstrap();
-    const expressApp = app.getHttpAdapter().getInstance();
-    expressApp(req, res);
+    try {
+        const app = await bootstrap();
+        const expressApp = app.getHttpAdapter().getInstance();
+        expressApp(req, res);
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Server Error', error: err });
+    }
 }
 //# sourceMappingURL=index.js.map
