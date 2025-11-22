@@ -1,8 +1,8 @@
 import { join } from 'path';
 import { readFileSync } from 'fs';
 import { NestFactory } from '@nestjs/core';
+import { Request, Response } from 'express';
 import { AppModule } from '../src/app.module';
-import { VercelRequest, VercelResponse } from '@vercel/node';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 let cachedApp: NestExpressApplication;
@@ -29,9 +29,8 @@ async function bootstrap() {
   return cachedApp;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request, res: Response) {
   const app = await bootstrap();
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-  app.getHttpAdapter().getInstance()(req, res);
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp(req, res);
 }

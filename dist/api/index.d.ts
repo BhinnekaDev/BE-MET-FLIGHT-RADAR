@@ -1,2 +1,2 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
-export default function handler(req: VercelRequest, res: VercelResponse): Promise<void>;
+import { Request, Response } from 'express';
+export default function handler(req: Request, res: Response): Promise<void>;

@@ -3,7 +3,7 @@
   "paths": {
     "/": {
       "get": {
-        "operationId": "AppController_getHello",
+        "operationId": "AppController_root",
         "parameters": [],
         "responses": {
           "200": {

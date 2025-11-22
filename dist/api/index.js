@@ -22,6 +22,7 @@ async function bootstrap() {
 }
 async function handler(req, res) {
     const app = await bootstrap();
-    app.getHttpAdapter().getInstance()(req, res);
+    const expressApp = app.getHttpAdapter().getInstance();
+    expressApp(req, res);
 }
 //# sourceMappingURL=index.js.map
