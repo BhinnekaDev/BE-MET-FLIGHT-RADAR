@@ -5,12 +5,14 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import axios from 'axios';
+import { WeatherGateway } from './weather.gateway';
 
 @Injectable()
 export class WeatherService {
   constructor(
     @Inject('SUPABASE_CLIENT')
     private readonly supabase: SupabaseClient,
+    private readonly weatherGateway: WeatherGateway,
   ) {}
 
   private async fetchWeatherFromApi(lat: number, lon: number) {
@@ -20,7 +22,7 @@ export class WeatherService {
 
       const response = await axios.get(url);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       throw new InternalServerErrorException(
         `Gagal mengambil data cuaca dari API: ${error.message}`,
       );
@@ -29,48 +31,53 @@ export class WeatherService {
 
   async fetchAndInsertWeather(airportId: number) {
     try {
-      // Ambil airport
       const { data: airport, error: airportErr } = await this.supabase
         .from('airport_locations')
         .select('*')
         .eq('id', airportId)
         .single();
 
-      if (airportErr) {
+      if (airportErr || !airport) {
         throw new InternalServerErrorException(
-          `Gagal mengambil airport: ${airportErr.message}`,
+          `Gagal mengambil data airport: ${airportErr?.message}`,
         );
       }
 
       const weather = await this.fetchWeatherFromApi(airport.lat, airport.lon);
 
       const insertPayload = {
-        city_name: weather.name,
-        lat: weather.coord.lat,
-        lon: weather.coord.lon,
-        country_code: weather.sys.country,
-        temp: weather.main.temp,
-        feels_like: weather.main.feels_like,
-        humidity: weather.main.humidity,
-        pressure: weather.main.pressure,
-        temp_min: weather.main.temp_min,
-        temp_max: weather.main.temp_max,
-        visibility: weather.visibility,
-        weather_main: weather.weather[0]?.main,
-        weather_description: weather.weather[0]?.description,
-        weather_icon: weather.weather[0]?.icon,
-        wind_speed: weather.wind.speed,
-        wind_deg: weather.wind.deg,
-        wind_gust: weather.wind.gust ?? null,
+        city_name: weather.name ?? null,
+        lat: weather.coord?.lat ?? airport.lat,
+        lon: weather.coord?.lon ?? airport.lon,
+        country_code: weather.sys?.country ?? null,
+        temp: weather.main?.temp ?? null,
+        feels_like: weather.main?.feels_like ?? null,
+        humidity: weather.main?.humidity ?? null,
+        pressure: weather.main?.pressure ?? null,
+        temp_min: weather.main?.temp_min ?? null,
+        temp_max: weather.main?.temp_max ?? null,
+        visibility: weather.visibility ?? null,
+        weather_main: weather.weather?.[0]?.main ?? null,
+        weather_description: weather.weather?.[0]?.description ?? null,
+        weather_icon: weather.weather?.[0]?.icon ?? null,
+        wind_speed: weather.wind?.speed ?? null,
+        wind_deg: weather.wind?.deg ?? null,
+        wind_gust: weather.wind?.gust ?? null,
         cloud_percentage: weather.clouds?.all ?? null,
         rain_1h: weather.rain?.['1h'] ?? null,
         rain_3h: weather.rain?.['3h'] ?? null,
         snow_1h: weather.snow?.['1h'] ?? null,
         snow_3h: weather.snow?.['3h'] ?? null,
-        sunrise: new Date(weather.sys.sunrise * 1000).toISOString(),
-        sunset: new Date(weather.sys.sunset * 1000).toISOString(),
-        timezone_offset: weather.timezone,
-        data_timestamp: new Date(weather.dt * 1000).toISOString(),
+        sunrise: weather.sys?.sunrise
+          ? new Date(weather.sys.sunrise * 1000).toISOString()
+          : null,
+        sunset: weather.sys?.sunset
+          ? new Date(weather.sys.sunset * 1000).toISOString()
+          : null,
+        timezone_offset: weather.timezone ?? null,
+        data_timestamp: weather.dt
+          ? new Date(weather.dt * 1000).toISOString()
+          : null,
         airport_id: airportId,
       };
 
@@ -86,7 +93,7 @@ export class WeatherService {
       }
 
       return data;
-    } catch (error) {
+    } catch (error: any) {
       throw new InternalServerErrorException(
         `Terjadi kesalahan saat proses cuaca: ${error.message}`,
       );
@@ -95,7 +102,6 @@ export class WeatherService {
 
   async fetchWeatherForAllAirports() {
     try {
-      // Ambil semua airport
       const { data: airports, error: airportErr } = await this.supabase
         .from('airport_locations')
         .select('*');
@@ -106,11 +112,10 @@ export class WeatherService {
         );
       }
 
-      if (!airports || airports.length === 0) {
-        return { message: 'Tidak ada airport yang tersedia.' };
+      if (!airports?.length) {
+        return { message: 'Tidak ada airport yang tersedia' };
       }
 
-      // Proses paralel (lebih cepat)
       const results = await Promise.all(
         airports.map((airport) =>
           this.fetchAndInsertWeather(airport.id)
@@ -129,11 +134,13 @@ export class WeatherService {
         ),
       );
 
-      return {
+      this.weatherGateway.broadcastBulkUpdate({
         total_airports: airports.length,
         results,
-      };
-    } catch (error) {
+      });
+
+      return { total_airports: airports.length, results };
+    } catch (error: any) {
       throw new InternalServerErrorException(
         `Gagal mengambil cuaca semua airport: ${error.message}`,
       );
@@ -143,8 +150,7 @@ export class WeatherService {
   async aggregateWeather(airportId: number) {
     try {
       const now = new Date();
-      const start = new Date(now);
-      start.setHours(now.getHours() - 1);
+      const start = new Date(now.getTime() - 60 * 60 * 1000);
 
       const { data: rows, error: err } = await this.supabase
         .from('weather')
@@ -162,7 +168,7 @@ export class WeatherService {
       if (!rows.length) return null;
 
       const avg = (arr: number[]) =>
-        arr.reduce((a, b) => a + b, 0) / arr.length;
+        arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
       const aggPayload = {
         airport_id: airportId,
@@ -192,7 +198,7 @@ export class WeatherService {
       }
 
       return data;
-    } catch (error) {
+    } catch (error: any) {
       throw new InternalServerErrorException(
         `Kesalahan agregasi: ${error.message}`,
       );
@@ -201,14 +207,8 @@ export class WeatherService {
 
   private getMostCommon(list: string[]): string {
     if (!list.length) return '';
-
     const counts: Record<string, number> = {};
-    for (const item of list) {
-      counts[item] = (counts[item] || 0) + 1;
-    }
-
-    const entries = Object.entries(counts) as [string, number][];
-    entries.sort((a, b) => b[1] - a[1]);
-    return entries[0][0];
+    for (const item of list) counts[item] = (counts[item] || 0) + 1;
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
   }
 }
