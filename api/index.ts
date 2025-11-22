@@ -41,6 +41,7 @@ export default async function handler(req: Request, res: Response) {
     console.error(err);
     res
       .status(500)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       .json({ message: 'Internal Server Error', error: err?.message || err });
   }
 }
