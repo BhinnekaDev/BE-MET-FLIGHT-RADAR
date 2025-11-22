@@ -1,47 +1,29 @@
+/* eslint-disable */
 import { join } from 'path';
-import { readFileSync } from 'fs';
-import { NestFactory } from '@nestjs/core';
-import { Request, Response } from 'express';
-import { AppModule } from '../src/app.module';
-import { apiReference } from '@scalar/nestjs-api-reference';
-import { NestExpressApplication } from '@nestjs/platform-express';
+import { readFileSync, existsSync } from 'fs';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 
-let cachedApp: NestExpressApplication;
-
-async function bootstrap() {
-  if (!cachedApp) {
-    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-      logger: false,
-    });
-
-    app.useStaticAssets(join(__dirname, '..', 'public'));
-    app.use('/openapi.json', (req, res) => {
-      const json = readFileSync(
-        join(__dirname, '..', 'public/openapi.json'),
-        'utf-8',
-      );
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      res.type('json').send(json);
-    });
-
-    app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
-
-    await app.init();
-    cachedApp = app;
-  }
-  return cachedApp;
-}
-
-export default async function handler(req: Request, res: Response) {
+export default function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const app = await bootstrap();
-    const expressApp = app.getHttpAdapter().getInstance();
-    expressApp(req, res);
-  } catch (err) {
-    console.error(err);
+    const jsonPath = join(__dirname, '../public/openapi.json');
+    if (!existsSync(jsonPath)) {
+      return res.status(404).json({ message: 'openapi.json not found' });
+    }
+
+    if (req.url === '/openapi.json') {
+      const json = readFileSync(jsonPath, 'utf-8');
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(200).send(json);
+    }
+
+    if (req.url === '/docs' || req.url === '/') {
+      return res.redirect(302, '/openapi.json');
+    }
+
+    res.status(404).send('Not Found');
+  } catch (err: any) {
     res
       .status(500)
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      .json({ message: 'Internal Server Error', error: err?.message || err });
+      .json({ message: 'Internal Server Error', error: err.message });
   }
 }
