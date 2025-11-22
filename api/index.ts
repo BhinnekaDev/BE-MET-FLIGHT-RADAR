@@ -1,14 +1,18 @@
 /* eslint-disable */
-import { join, extname } from 'path';
+import { NestFactory } from '@nestjs/core';
+import { extname, resolve, join } from 'path';
+import { AppModule } from '../src/app.module';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+let cachedApp: any;
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const reqUrl = req.url || '/';
 
     if (reqUrl === '/openapi.json') {
-      const jsonPath = join(__dirname, '../public/openapi.json');
+      const jsonPath = resolve(__dirname, '../public/openapi.json');
       if (!existsSync(jsonPath)) {
         return res.status(404).json({ message: 'openapi.json not found' });
       }
@@ -18,11 +22,9 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (reqUrl.startsWith('/docs')) {
-      let docsPath = join(__dirname, '../public', reqUrl);
-
+      let docsPath = resolve(__dirname, '../public', reqUrl);
       if (existsSync(docsPath)) {
         const stats = statSync(docsPath);
-
         if (stats.isDirectory()) {
           docsPath = join(docsPath, 'index.html');
         }
@@ -44,12 +46,18 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).send(content);
         }
       }
-
       return res.status(404).send('Docs Not Found');
     }
 
-    res.status(404).send('Not Found');
+    if (!cachedApp) {
+      cachedApp = await NestFactory.create(AppModule, { logger: false });
+      await cachedApp.init();
+    }
+
+    const httpAdapter = cachedApp.getHttpAdapter().getInstance();
+    httpAdapter(req, res);
   } catch (err: any) {
+    console.error('Server error:', err);
     res
       .status(500)
       .json({ message: 'Internal Server Error', error: err.message });
