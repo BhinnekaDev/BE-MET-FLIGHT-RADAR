@@ -1,8 +1,8 @@
+import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { apiReference } from '@scalar/nestjs-api-reference';
 import { join } from 'path';
 import { AppModule } from './app.module';
-import { NestFactory } from '@nestjs/core';
-import { apiReference } from '@scalar/nestjs-api-reference';
-import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -10,6 +10,11 @@ async function bootstrap() {
   app.enableCors();
 
   app.use('/docs', apiReference({ theme: 'default' }));
+
+  app.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   app.useStaticAssets(join(__dirname, '..', 'public'));
 

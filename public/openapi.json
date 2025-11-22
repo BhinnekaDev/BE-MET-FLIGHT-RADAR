@@ -14,6 +14,20 @@
           "App"
         ]
       }
+    },
+    "/aircraft/fetch": {
+      "get": {
+        "operationId": "AircraftController_fetch",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Aircraft"
+        ]
+      }
     }
   },
   "info": {
