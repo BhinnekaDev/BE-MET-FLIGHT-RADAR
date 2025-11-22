@@ -26,27 +26,44 @@ export class AircraftService {
   async fetchAircraftData(): Promise<any[]> {
     const now = Date.now();
 
+    // gunakan cache untuk meringankan API
     if (this.cache && now - this.lastFetchTime < this.CACHE_DURATION) {
       return this.cache;
     }
 
-    try {
-      const url = `https://opensky-network.org/api/states/all?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`;
+    const urls = [
+      `https://opensky-network.org/api/states/all?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`,
+      `https://opensky-rest.p.rapidapi.com/states?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`, // fallback mirror
+    ];
 
-      const response = await axios.get(url);
-      const states = response.data.states || [];
+    let lastError = null;
 
-      this.cache = states;
-      this.lastFetchTime = now;
+    for (const url of urls) {
+      try {
+        const response = await axios.get(url, {
+          timeout: 7000, // atur timeout 7 detik
+          maxRedirects: 2,
+        });
 
-      await this.insertToDatabase(states);
+        const states = response.data.states || [];
+        this.cache = states;
+        this.lastFetchTime = now;
 
-      return states;
-    } catch (error) {
-      throw new InternalServerErrorException(
-        `Gagal fetch data pesawat: ${error.message}`,
-      );
+        await this.insertToDatabase(states);
+
+        return states;
+      } catch (err) {
+        lastError = err;
+        Logger.error(`Gagal fetch dari ${url}: ${err.message}`);
+      }
     }
+
+    const errMsg = lastError
+      ? ((lastError as any).message ?? String(lastError))
+      : 'unknown error';
+    throw new InternalServerErrorException(
+      `Gagal fetch data pesawat setelah retry: ${errMsg}`,
+    );
   }
 
   private async insertToDatabase(states: any[]) {
