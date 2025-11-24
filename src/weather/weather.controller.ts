@@ -1,16 +1,23 @@
-import { Controller, InternalServerErrorException, Post } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param } from '@nestjs/common';
 import { WeatherService } from './weather.service';
 
 @Controller('weather')
 export class WeatherController {
   constructor(private readonly weatherService: WeatherService) {}
 
-  @Post('fetch-all')
-  async fetchAll() {
-    try {
-      return await this.weatherService.fetchWeatherForAllAirports();
-    } catch (error) {
-      throw new InternalServerErrorException(error.message);
+  @Get()
+  async getWeather() {
+    return this.weatherService.getWeatherRealtimeAndSaveHidden();
+  }
+
+  @Get('rata-rata/:interval')
+  async aggregateManual(@Param('interval') interval: string) {
+    const allowed = ['minute', 'hour', 'day', 'month'];
+
+    if (!allowed.includes(interval)) {
+      throw new BadRequestException('Interval tidak valid');
     }
+
+    return this.weatherService.aggregate(interval as any);
   }
 }
