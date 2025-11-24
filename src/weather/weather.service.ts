@@ -204,27 +204,37 @@ export class WeatherService {
 
     switch (interval) {
       case 'minute':
+        // 5 minutes window
         return {
-          from: new Date(now.getTime() - 60 * 1000).toISOString(),
+          from: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
           trunc: 'minute',
         };
+
       case 'hour':
-        return {
-          from: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
-          trunc: 'hour',
-        };
-      case 'day':
+        // 24 hours window
         return {
           from: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-          trunc: 'day',
+          trunc: 'hour',
         };
-      case 'month':
+
+      case 'day':
+        // 30 days window
         return {
           from: new Date(
             now.getTime() - 30 * 24 * 60 * 60 * 1000,
           ).toISOString(),
+          trunc: 'day',
+        };
+
+      case 'month':
+        // 12 months window
+        return {
+          from: new Date(
+            now.getTime() - 365 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
           trunc: 'month',
         };
+
       default:
         throw new Error('Unknown interval');
     }
