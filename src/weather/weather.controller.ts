@@ -10,7 +10,7 @@ export class WeatherController {
     return this.weatherService.getWeatherRealtimeAndSaveHidden();
   }
 
-  @Get()
+  @Get('savemanual')
   async getSaveWeather() {
     return this.weatherService.fetchAndSaveWeatherForAllAirports();
   }

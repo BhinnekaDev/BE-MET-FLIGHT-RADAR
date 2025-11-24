@@ -31,6 +31,20 @@
     },
     "/weather": {
       "get": {
+        "operationId": "WeatherController_getWeather",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Weather"
+        ]
+      }
+    },
+    "/weather/savemanual": {
+      "get": {
         "operationId": "WeatherController_getSaveWeather",
         "parameters": [],
         "responses": {
