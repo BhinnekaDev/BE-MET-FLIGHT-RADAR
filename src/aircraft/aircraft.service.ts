@@ -2,80 +2,102 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import * as https from 'https';
+import axios from 'axios';
 
 @Injectable()
 export class AircraftService {
+  private cache: any[] | null = null;
+  private lastFetchTime = 0;
+  private readonly CACHE_DURATION = 30 * 1000;
+
+  private readonly lamin = -12;
+  private readonly lamax = 7;
+  private readonly lomin = 94;
+  private readonly lomax = 142;
+
   constructor(
     @Inject('SUPABASE_CLIENT')
     private readonly supabase: SupabaseClient,
   ) {}
 
-  async getOpenSkyData() {
-    const lamin = -11;
-    const lomin = 94;
-    const lamax = 6;
-    const lomax = 141;
+  async fetchAircraftData(): Promise<any[]> {
+    const now = Date.now();
 
-    const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+    // gunakan cache untuk meringankan API
+    if (this.cache && now - this.lastFetchTime < this.CACHE_DURATION) {
+      return this.cache;
+    }
 
-    const username = process.env.OPENSKY_USER;
-    const password = process.env.OPENSKY_PASS;
+    const urls = [
+      `https://opensky-network.org/api/states/all?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`,
+      `https://opensky-rest.p.rapidapi.com/states?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`, // fallback mirror
+    ];
 
-    // Basic Auth
-    const auth = Buffer.from(`${username}:${password}`).toString('base64');
+    let lastError = null;
 
-    return new Promise((resolve, reject) => {
-      const req = https.get(
-        url,
-        {
-          timeout: 20000,
-          headers: {
-            Authorization: `Basic ${auth}`,
-          },
-          agent: new https.Agent({ keepAlive: true }),
-        },
-        (res) => {
-          let rawData = '';
+    for (const url of urls) {
+      try {
+        const response = await axios.get(url, {
+          timeout: 7000, // atur timeout 7 detik
+          maxRedirects: 2,
+        });
 
-          res.on('data', (chunk) => {
-            rawData += chunk;
-          });
+        const states = response.data.states || [];
+        this.cache = states;
+        this.lastFetchTime = now;
 
-          res.on('end', () => {
-            try {
-              const parsed = JSON.parse(rawData);
-              resolve(parsed);
-            } catch (err) {
-              console.error('Parse Error:', err);
-              reject(
-                new InternalServerErrorException(
-                  'Gagal parsing JSON dari OpenSky.',
-                ),
-              );
-            }
-          });
-        },
-      );
+        await this.insertToDatabase(states);
 
-      req.on('error', (err) => {
-        console.error('OpenSky HTTPS Error:', err.message);
-        reject(
-          new InternalServerErrorException('Gagal menghubungi OpenSky (auth).'),
-        );
+        return states;
+      } catch (err) {
+        lastError = err;
+        Logger.error(`Gagal fetch dari ${url}: ${err.message}`);
+      }
+    }
+
+    const errMsg = lastError
+      ? ((lastError as any).message ?? String(lastError))
+      : 'unknown error';
+    throw new InternalServerErrorException(
+      `Gagal fetch data pesawat setelah retry: ${errMsg}`,
+    );
+  }
+
+  private async insertToDatabase(states: any[]) {
+    for (const state of states) {
+      const [
+        icao24,
+        callsign,
+        origin_country,
+        longitude,
+        latitude,
+        altitude, // ignore
+        ,
+        velocity, // kecepatan
+        heading, // arah
+        ,
+        // ignore
+        timestamp,
+      ] = state;
+
+      const { error } = await this.supabase.from('aircraft').insert({
+        icao24,
+        callsign,
+        negara_asal: origin_country,
+        longitude,
+        latitude,
+        altitude,
+        kecepatan: velocity,
+        arah: heading,
+        data_timestamp: new Date(timestamp * 1000),
       });
 
-      req.on('timeout', () => {
-        req.destroy();
-        console.error('OpenSky Timeout');
-        reject(
-          new InternalServerErrorException(
-            'Timeout saat menghubungi OpenSky (auth).',
-          ),
-        );
-      });
-    });
+      if (error) {
+        Logger.error(`Insert gagal: ${error.message}`);
+      }
+    }
   }
 }

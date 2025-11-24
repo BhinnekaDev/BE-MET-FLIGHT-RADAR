@@ -5,8 +5,8 @@ import { AircraftService } from './aircraft.service';
 export class AircraftController {
   constructor(private readonly aircraftService: AircraftService) {}
 
-  @Get('realtime')
-  async getRealtimeAircraft() {
-    return this.aircraftService.getOpenSkyData();
+  @Get('fetch')
+  async fetch() {
+    return this.aircraftService.fetchAircraftData();
   }
 }

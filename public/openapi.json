@@ -15,9 +15,9 @@
         ]
       }
     },
-    "/aircraft/realtime": {
+    "/aircraft/fetch": {
       "get": {
-        "operationId": "AircraftController_getRealtimeAircraft",
+        "operationId": "AircraftController_fetch",
         "parameters": [],
         "responses": {
           "200": {
@@ -29,12 +29,35 @@
         ]
       }
     },
-    "/weather/fetch-all": {
-      "post": {
-        "operationId": "WeatherController_fetchAll",
+    "/weather": {
+      "get": {
+        "operationId": "WeatherController_getWeather",
         "parameters": [],
         "responses": {
-          "201": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Weather"
+        ]
+      }
+    },
+    "/weather/rata-rata/{interval}": {
+      "get": {
+        "operationId": "WeatherController_aggregateManual",
+        "parameters": [
+          {
+            "name": "interval",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
