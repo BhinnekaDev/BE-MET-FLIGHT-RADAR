@@ -2,6 +2,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -14,6 +15,8 @@ export class WeatherService {
     private readonly supabase: SupabaseClient,
   ) {}
 
+  private readonly logger = new Logger(WeatherService.name);
+  private pauseUntil: number | null = null;
   private apiKey = process.env.OPENWEATHER_API_KEY;
 
   async getWeatherForAllAirports() {
@@ -69,6 +72,15 @@ export class WeatherService {
   }
 
   async fetchAndSaveWeatherForAllAirports() {
+    const now = Date.now();
+    if (this.pauseUntil && now < this.pauseUntil) {
+      return {
+        total_airports: 0,
+        result: [],
+        error: `Fetch dihentikan sementara karena limit OpenWeather, bisa lanjut setelah ${new Date(this.pauseUntil).toISOString()}`,
+      };
+    }
+
     if (!this.apiKey) {
       return {
         total_airports: 0,
@@ -107,7 +119,6 @@ export class WeatherService {
           lat: w.coord?.lat ?? null,
           lon: w.coord?.lon ?? null,
           country_code: w.sys?.country ?? null,
-
           temp: w.main?.temp ?? null,
           feels_like: w.main?.feels_like ?? null,
           humidity: w.main?.humidity ?? null,
@@ -115,21 +126,17 @@ export class WeatherService {
           temp_min: w.main?.temp_min ?? null,
           temp_max: w.main?.temp_max ?? null,
           visibility: w.visibility ?? null,
-
           weather_main: w.weather?.[0]?.main ?? null,
           weather_description: w.weather?.[0]?.description ?? null,
           weather_icon: w.weather?.[0]?.icon ?? null,
-
           wind_speed: w.wind?.speed ?? null,
           wind_deg: w.wind?.deg ?? null,
           wind_gust: w.wind?.gust ?? null,
-
           cloud_percentage: w.clouds?.all ?? null,
           rain_1h: w.rain?.['1h'] ?? null,
           rain_3h: w.rain?.['3h'] ?? null,
           snow_1h: w.snow?.['1h'] ?? null,
           snow_3h: w.snow?.['3h'] ?? null,
-
           sunrise: w.sys?.sunrise
             ? new Date(w.sys.sunrise * 1000).toISOString()
             : null,
@@ -138,7 +145,6 @@ export class WeatherService {
             : null,
           timezone_offset: w.timezone ?? null,
           data_timestamp: w.dt ? new Date(w.dt * 1000).toISOString() : null,
-
           airport_id: ap.id,
         };
 
@@ -153,17 +159,25 @@ export class WeatherService {
             error: insertError.message,
           });
         } else {
-          results.push({
-            airport: ap.code,
-            status: 'saved',
-          });
+          results.push({ airport: ap.code, status: 'saved' });
         }
       } catch (err: any) {
-        results.push({
-          airport: ap.code,
-          status: 'failed',
-          error: err.message ?? 'Unknown error',
-        });
+        if (err.response?.status === 429) {
+          this.pauseUntil = Date.now() + 60 * 60 * 1000;
+          results.push({
+            airport: ap.code,
+            status: 'failed',
+            error:
+              'Rate limit OpenWeather tercapai. Fetch dihentikan sementara.',
+          });
+          break;
+        } else {
+          results.push({
+            airport: ap.code,
+            status: 'failed',
+            error: err.message ?? 'Unknown error',
+          });
+        }
       }
     }
 
@@ -173,37 +187,11 @@ export class WeatherService {
     };
   }
 
-  // memanggil getWeatherForAllAirports tapi tidak melempar error jika gagal menyimpan
-  async getWeatherRealtimeAndSaveHidden() {
-    let silentErrors: Array<{ airport: string; error: string }> = [];
-
-    await this.fetchAndSaveWeatherForAllAirports()
-      .then((res) => {
-        const result: Array<{
-          airport: string;
-          status: 'saved' | 'failed';
-          error?: string;
-        }> = res.result;
-        silentErrors = result
-          .filter((r) => r.status === 'failed')
-          .map((r) => ({
-            airport: r.airport,
-            error: r.error ?? 'Unknown error',
-          }));
-      })
-      .catch((err) => {
-        silentErrors.push({
-          airport: 'all',
-          error: err.message || 'Unknown error',
-        });
-      });
-
-    const realtimeData = await this.getWeatherForAllAirports();
-
-    return {
-      ...realtimeData,
-      silent_errors: silentErrors,
-    };
+  @Cron('*/30 * * * * *') // setiap 30 detik
+  async handleCron() {
+    this.logger.log('Memulai fetch weather otomatis...');
+    const result = await this.fetchAndSaveWeatherForAllAirports();
+    this.logger.log(`Fetch selesai: ${JSON.stringify(result)}`);
   }
 
   /**
@@ -251,8 +239,10 @@ export class WeatherService {
     });
 
     if (error) {
-      console.error('Aggregation error:', error);
+      this.logger.error('Aggregation error', error);
       throw error;
+    } else {
+      this.logger.log('Aggregate selesai dan data tersimpan.');
     }
 
     return data;
@@ -260,20 +250,102 @@ export class WeatherService {
 
   @Cron('*/1 * * * *') // setiap menit
   async aggregateMinute() {
-    await this.aggregate('minute');
+    try {
+      this.logger.log('Memulai aggregate per menit...');
+      await this.aggregate('minute');
+      this.logger.log('Aggregate per menit selesai.');
+    } catch (err) {
+      this.logger.error('Error saat aggregate per menit', err);
+      console.error(err);
+    }
   }
+
   @Cron('0 */1 * * *') // setiap jam
   async aggregateHour() {
-    await this.aggregate('hour');
+    try {
+      this.logger.log('Memulai aggregate per jam...');
+      await this.aggregate('hour');
+      this.logger.log('Aggregate per jam selesai.');
+    } catch (err) {
+      this.logger.error('Error saat aggregate per jam', err);
+      console.error(err);
+    }
   }
 
   @Cron('0 0 */1 * *') // setiap hari
   async aggregateDay() {
-    await this.aggregate('day');
+    try {
+      this.logger.log('Memulai aggregate per hari...');
+      await this.aggregate('day');
+      this.logger.log('Aggregate per hari selesai.');
+    } catch (err) {
+      this.logger.error('Error saat aggregate per hari', err);
+      console.error(err);
+    }
   }
 
   @Cron('0 0 1 */1 *') // setiap bulan
   async aggregateMonth() {
-    await this.aggregate('month');
+    try {
+      this.logger.log('Memulai aggregate per bulan...');
+      await this.aggregate('month');
+      this.logger.log('Aggregate per bulan selesai.');
+    } catch (err) {
+      this.logger.error('Error saat aggregate per bulan', err);
+      console.error(err);
+    }
   }
+
+  /**
+   * delete
+   */
+  // private getMonthRangeForDeletion() {
+  //   const now = new Date();
+
+  //   const fiveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 4, 1);
+  //   const startOfOldestMonth = new Date(fiveMonthsAgo.getFullYear(), fiveMonthsAgo.getMonth(), 1);
+  //   const startOfNextMonth = new Date(fiveMonthsAgo.getFullYear(), fiveMonthsAgo.getMonth() + 1, 1);
+
+  //   return { startOfOldestMonth, startOfNextMonth };
+  // }
+
+  // async deleteOldWeatherData() {
+  //   const { startOfOldestMonth, startOfNextMonth } = this.getMonthRangeForDeletion();
+
+  //   const { error: weatherError } = await this.supabase
+  //     .from('weather')
+  //     .delete()
+  //     .gte('created_at', startOfOldestMonth.toISOString())
+  //     .lt('created_at', startOfNextMonth.toISOString());
+
+  //   if (weatherError) {
+  //     this.logger.error('Error hapus weather:', weatherError);
+  //   } else {
+  //     this.logger.log(
+  //       `Data weather dari ${startOfOldestMonth.toISOString()} sampai ${startOfNextMonth.toISOString()} berhasil dihapus`,
+  //     );
+  //   }
+
+  //   const { error: aggError } = await this.supabase
+  //     .from('weather_aggregation')
+  //     .delete()
+  //     .gte('interval_start', startOfOldestMonth.toISOString())
+  //     .lt('interval_start', startOfNextMonth.toISOString());
+
+  //   if (aggError) {
+  //     this.logger.error('Error hapus weather_aggregation:', aggError);
+  //   } else {
+  //     this.logger.log(
+  //       `Data weather_aggregation dari ${startOfOldestMonth.toISOString()} sampai ${startOfNextMonth.toISOString()} berhasil dihapus`,
+  //     );
+  //   }
+  // }
+
+  // // Cron job: dijalankan tiap tanggal 1 jam 00:00
+  // @Cron('0 0 1 * *')
+  // async handleMonthlyCleanup() {
+  //   this.logger.log('Memulai penghapusan data lama (bulan pertama dari 5 bulan terakhir)...');
+  //   await this.deleteOldWeatherData();
+  //   this.logger.log('Penghapusan data lama selesai.');
+  // }
 }
