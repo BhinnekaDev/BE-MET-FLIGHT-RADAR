@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import axios from 'axios';
+import * as https from 'https';
 
 @Injectable()
 export class AircraftService {
@@ -19,23 +19,58 @@ export class AircraftService {
     const lamax = 6;
     const lomax = 141;
 
-    const url = `https://opensky.p.rapidapi.com/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+    const originalUrl = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
 
-    try {
-      const response = await axios.get(url, {
-        headers: {
-          'x-rapidapi-key': process.env.RAPIDAPI_KEY!,
-          'x-rapidapi-host': 'opensky.p.rapidapi.com',
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+      originalUrl,
+    )}`;
+
+    return new Promise((resolve, reject) => {
+      const request = https.get(
+        proxyUrl,
+        {
+          timeout: 20000,
+          agent: new https.Agent({ keepAlive: true }),
         },
-        timeout: 15000,
+        (response) => {
+          let data = '';
+
+          response.on('data', (chunk) => {
+            data += chunk;
+          });
+
+          response.on('end', () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch (err) {
+              reject(
+                new InternalServerErrorException(
+                  'Gagal parsing JSON dari OpenSky (proxy).',
+                ),
+              );
+            }
+          });
+        },
+      );
+
+      request.on('error', (err) => {
+        console.error('Proxy HTTPS Error:', err.message);
+        reject(
+          new InternalServerErrorException(
+            'Gagal mengambil data dari OpenSky (via proxy).',
+          ),
+        );
       });
 
-      return response.data;
-    } catch (err: any) {
-      console.error('RapidAPI Error:', err.message);
-      throw new InternalServerErrorException(
-        'Gagal mengambil data dari OpenSky (RapidAPI)',
-      );
-    }
+      request.on('timeout', () => {
+        request.destroy();
+        console.error('Proxy HTTPS Timeout');
+        reject(
+          new InternalServerErrorException(
+            'Timeout saat menghubungi proxy OpenSky.',
+          ),
+        );
+      });
+    });
   }
 }
