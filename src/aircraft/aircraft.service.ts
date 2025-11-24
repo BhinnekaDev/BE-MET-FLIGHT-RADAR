@@ -2,102 +2,39 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
-  Logger,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import axios from 'axios';
 
 @Injectable()
 export class AircraftService {
-  private cache: any[] | null = null;
-  private lastFetchTime = 0;
-  private readonly CACHE_DURATION = 30 * 1000;
-
-  private readonly lamin = -12;
-  private readonly lamax = 7;
-  private readonly lomin = 94;
-  private readonly lomax = 142;
-
   constructor(
     @Inject('SUPABASE_CLIENT')
     private readonly supabase: SupabaseClient,
   ) {}
 
-  async fetchAircraftData(): Promise<any[]> {
-    const now = Date.now();
+  async getOpenSkyData(params: {
+    lamin?: number;
+    lomin?: number;
+    lamax?: number;
+    lomax?: number;
+  }) {
+    // bounding box default wilayah Indonesia
+    const { lamin = -11, lomin = 94, lamax = 6, lomax = 141 } = params;
 
-    // gunakan cache untuk meringankan API
-    if (this.cache && now - this.lastFetchTime < this.CACHE_DURATION) {
-      return this.cache;
-    }
+    const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
 
-    const urls = [
-      `https://opensky-network.org/api/states/all?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`,
-      `https://opensky-rest.p.rapidapi.com/states?lamin=${this.lamin}&lomin=${this.lomin}&lamax=${this.lamax}&lomax=${this.lomax}`, // fallback mirror
-    ];
-
-    let lastError = null;
-
-    for (const url of urls) {
-      try {
-        const response = await axios.get(url, {
-          timeout: 7000, // atur timeout 7 detik
-          maxRedirects: 2,
-        });
-
-        const states = response.data.states || [];
-        this.cache = states;
-        this.lastFetchTime = now;
-
-        await this.insertToDatabase(states);
-
-        return states;
-      } catch (err) {
-        lastError = err;
-        Logger.error(`Gagal fetch dari ${url}: ${err.message}`);
-      }
-    }
-
-    const errMsg = lastError
-      ? ((lastError as any).message ?? String(lastError))
-      : 'unknown error';
-    throw new InternalServerErrorException(
-      `Gagal fetch data pesawat setelah retry: ${errMsg}`,
-    );
-  }
-
-  private async insertToDatabase(states: any[]) {
-    for (const state of states) {
-      const [
-        icao24,
-        callsign,
-        origin_country,
-        longitude,
-        latitude,
-        altitude, // ignore
-        ,
-        velocity, // kecepatan
-        heading, // arah
-        ,
-        // ignore
-        timestamp,
-      ] = state;
-
-      const { error } = await this.supabase.from('aircraft').insert({
-        icao24,
-        callsign,
-        negara_asal: origin_country,
-        longitude,
-        latitude,
-        altitude,
-        kecepatan: velocity,
-        arah: heading,
-        data_timestamp: new Date(timestamp * 1000),
+    try {
+      const response = await axios.get(url, {
+        timeout: 10000,
       });
 
-      if (error) {
-        Logger.error(`Insert gagal: ${error.message}`);
-      }
+      return response.data;
+    } catch (err: any) {
+      console.error('OpenSky Error:', err.message);
+      throw new InternalServerErrorException(
+        'Gagal mengambil data dari OpenSky API',
+      );
     }
   }
 }
