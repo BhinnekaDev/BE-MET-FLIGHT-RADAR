@@ -122,7 +122,6 @@ export class WeatheranalyticsService {
   }
 
   async predictNextDayWeather(airportId: number) {
-    // Ambil 24 jam terakhir (per jam) untuk bandara
     const { data, error } = await this.supabase
       .from('weather_aggregation')
       .select('*')
@@ -136,7 +135,6 @@ export class WeatheranalyticsService {
       return null;
     }
 
-    // Weighted average
     let weightSum = 0;
     let weightedTemp = 0;
     let weightedHumidity = 0;
@@ -144,7 +142,7 @@ export class WeatheranalyticsService {
     const weatherWeights: Record<string, number> = {};
 
     data.forEach((row, idx) => {
-      const weight = Math.pow(0.5, data.length - 1 - idx); // data terbaru lebih penting
+      const weight = Math.pow(0.5, data.length - 1 - idx);
       weightSum += weight;
       weightedTemp += parseFloat(row.avg_temp ?? 0) * weight;
       weightedHumidity += parseFloat(row.avg_humidity ?? 0) * weight;
@@ -154,7 +152,6 @@ export class WeatheranalyticsService {
       weatherWeights[weather] = (weatherWeights[weather] ?? 0) + weight;
     });
 
-    // Weighted mode untuk cuaca kategorikal
     const predictedWeather = Object.entries(weatherWeights).reduce((a, b) =>
       a[1] > b[1] ? a : b,
     )[0];
