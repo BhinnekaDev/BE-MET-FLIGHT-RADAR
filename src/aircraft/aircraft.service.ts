@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import * as https from 'https';
+import axios from 'axios';
 
 @Injectable()
 export class AircraftService {
@@ -19,54 +19,23 @@ export class AircraftService {
     const lamax = 6;
     const lomax = 141;
 
-    const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+    const url = `https://opensky.p.rapidapi.com/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
 
-    return new Promise((resolve, reject) => {
-      const request = https.get(
-        url,
-        {
-          timeout: 30000, // 30 detik, lebih tahan timeout
-          agent: new https.Agent({ keepAlive: true }),
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'x-rapidapi-key': process.env.RAPIDAPI_KEY!,
+          'x-rapidapi-host': 'opensky.p.rapidapi.com',
         },
-        (response) => {
-          let data = '';
+        timeout: 15000,
+      });
 
-          response.on('data', (chunk) => {
-            data += chunk;
-          });
-
-          response.on('end', () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch (err) {
-              reject(
-                new InternalServerErrorException(
-                  'Gagal parsing JSON dari OpenSky.',
-                ),
-              );
-            }
-          });
-        },
+      return response.data;
+    } catch (err: any) {
+      console.error('RapidAPI Error:', err.message);
+      throw new InternalServerErrorException(
+        'Gagal mengambil data dari OpenSky (RapidAPI)',
       );
-
-      request.on('error', (err) => {
-        console.error('HTTPS Error:', err.message);
-        reject(
-          new InternalServerErrorException(
-            'Gagal mengambil data dari OpenSky.',
-          ),
-        );
-      });
-
-      request.on('timeout', () => {
-        request.destroy();
-        console.error('HTTPS Timeout');
-        reject(
-          new InternalServerErrorException(
-            'Timeout saat menghubungi OpenSky API',
-          ),
-        );
-      });
-    });
+    }
   }
 }
