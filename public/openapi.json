@@ -31,7 +31,7 @@
     },
     "/weather": {
       "get": {
-        "operationId": "WeatherController_getWeather",
+        "operationId": "WeatherController_getSaveWeather",
         "parameters": [],
         "responses": {
           "200": {
