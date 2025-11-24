@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import axios from 'axios';
+import * as https from 'https';
 
 @Injectable()
 export class AircraftService {
@@ -13,59 +13,60 @@ export class AircraftService {
     private readonly supabase: SupabaseClient,
   ) {}
 
-  async getOpenSkyData(params?: {
-    lamin?: number;
-    lomin?: number;
-    lamax?: number;
-    lomax?: number;
-  }) {
-    const { lamin = -11, lomin = 94, lamax = 6, lomax = 141 } = params ?? {};
+  async getOpenSkyData() {
+    const lamin = -11;
+    const lomin = 94;
+    const lamax = 6;
+    const lomax = 141;
 
     const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
 
-    const axiosConfig = {
-      timeout: 20000,
-    };
+    return new Promise((resolve, reject) => {
+      const request = https.get(
+        url,
+        {
+          timeout: 30000, // 30 detik, lebih tahan timeout
+          agent: new https.Agent({ keepAlive: true }),
+        },
+        (response) => {
+          let data = '';
 
-    const tryAxios = async (): Promise<any> => {
-      let attempt = 0;
-      const maxAttempts = 2;
+          response.on('data', (chunk) => {
+            data += chunk;
+          });
 
-      while (attempt < maxAttempts) {
-        try {
-          return await axios.get(url, axiosConfig);
-        } catch (err) {
-          attempt++;
-          console.warn(`OpenSky attempt ${attempt} failed, retrying...`);
-
-          await new Promise((res) => setTimeout(res, 1000));
-
-          if (attempt >= maxAttempts) throw err;
-        }
-      }
-
-      throw new Error('Failed to fetch OpenSky data via axios after retries');
-    };
-
-    try {
-      try {
-        const response = await tryAxios();
-        return response.data;
-      } catch (axiosErr) {
-        console.warn('Axios gagal total. Mencoba fallback fetch...');
-      }
-
-      const fetchResponse = await fetch(url, { method: 'GET' });
-      if (!fetchResponse.ok) {
-        throw new Error(`Fetch error: ${fetchResponse.statusText}`);
-      }
-
-      return await fetchResponse.json();
-    } catch (err: any) {
-      console.error('OpenSky Error:', err.message);
-      throw new InternalServerErrorException(
-        'Gagal mengambil data dari OpenSky API',
+          response.on('end', () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch (err) {
+              reject(
+                new InternalServerErrorException(
+                  'Gagal parsing JSON dari OpenSky.',
+                ),
+              );
+            }
+          });
+        },
       );
-    }
+
+      request.on('error', (err) => {
+        console.error('HTTPS Error:', err.message);
+        reject(
+          new InternalServerErrorException(
+            'Gagal mengambil data dari OpenSky.',
+          ),
+        );
+      });
+
+      request.on('timeout', () => {
+        request.destroy();
+        console.error('HTTPS Timeout');
+        reject(
+          new InternalServerErrorException(
+            'Timeout saat menghubungi OpenSky API',
+          ),
+        );
+      });
+    });
   }
 }
