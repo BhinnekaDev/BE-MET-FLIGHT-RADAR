@@ -70,17 +70,23 @@ export class WeatherService {
 
   async fetchAndSaveWeatherForAllAirports() {
     if (!this.apiKey) {
-      throw new InternalServerErrorException(
-        'OPENWEATHER_KEY tidak ditemukan.',
-      );
+      return {
+        total_airports: 0,
+        result: [],
+        error: 'OPENWEATHER_KEY tidak ditemukan.',
+      };
     }
 
     const { data: airports, error: airportError } = await this.supabase
       .from('airport_locations')
       .select('id, name, code, lat, lon');
 
-    if (airportError) {
-      throw new InternalServerErrorException('Gagal mengambil daftar bandara.');
+    if (airportError || !airports) {
+      return {
+        total_airports: 0,
+        result: [],
+        error: 'Gagal mengambil daftar bandara.',
+      };
     }
 
     const results: Array<{
@@ -137,18 +143,22 @@ export class WeatherService {
           .insert(weatherRecord);
 
         if (insertError) {
-          throw new Error(insertError.message);
+          results.push({
+            airport: ap.code,
+            status: 'failed',
+            error: insertError.message,
+          });
+        } else {
+          results.push({
+            airport: ap.code,
+            status: 'saved',
+          });
         }
-
-        results.push({
-          airport: ap.code,
-          status: 'saved',
-        });
       } catch (err: any) {
         results.push({
           airport: ap.code,
           status: 'failed',
-          error: err.message,
+          error: err.message ?? 'Unknown error',
         });
       }
     }
@@ -165,7 +175,12 @@ export class WeatherService {
 
     await this.fetchAndSaveWeatherForAllAirports()
       .then((res) => {
-        silentErrors = res.result
+        const result: Array<{
+          airport: string;
+          status: 'saved' | 'failed';
+          error?: string;
+        }> = res.result;
+        silentErrors = result
           .filter((r) => r.status === 'failed')
           .map((r) => ({
             airport: r.airport,
