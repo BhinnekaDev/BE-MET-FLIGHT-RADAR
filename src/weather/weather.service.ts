@@ -14,7 +14,7 @@ export class WeatherService {
     private readonly supabase: SupabaseClient,
   ) {}
 
-  private apiKey = process.env.OPENWEATHER_KEY;
+  private apiKey = process.env.OPENWEATHER_API_KEY;
 
   async getWeatherForAllAirports() {
     if (!this.apiKey) {
