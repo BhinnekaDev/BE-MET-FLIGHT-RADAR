@@ -19,33 +19,40 @@ export class AircraftService {
     const lamax = 6;
     const lomax = 141;
 
-    const originalUrl = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+    const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
 
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
-      originalUrl,
-    )}`;
+    const username = process.env.OPENSKY_USER;
+    const password = process.env.OPENSKY_PASS;
+
+    // Basic Auth
+    const auth = Buffer.from(`${username}:${password}`).toString('base64');
 
     return new Promise((resolve, reject) => {
-      const request = https.get(
-        proxyUrl,
+      const req = https.get(
+        url,
         {
           timeout: 20000,
+          headers: {
+            Authorization: `Basic ${auth}`,
+          },
           agent: new https.Agent({ keepAlive: true }),
         },
-        (response) => {
-          let data = '';
+        (res) => {
+          let rawData = '';
 
-          response.on('data', (chunk) => {
-            data += chunk;
+          res.on('data', (chunk) => {
+            rawData += chunk;
           });
 
-          response.on('end', () => {
+          res.on('end', () => {
             try {
-              resolve(JSON.parse(data));
+              const parsed = JSON.parse(rawData);
+              resolve(parsed);
             } catch (err) {
+              console.error('Parse Error:', err);
               reject(
                 new InternalServerErrorException(
-                  'Gagal parsing JSON dari OpenSky (proxy).',
+                  'Gagal parsing JSON dari OpenSky.',
                 ),
               );
             }
@@ -53,21 +60,19 @@ export class AircraftService {
         },
       );
 
-      request.on('error', (err) => {
-        console.error('Proxy HTTPS Error:', err.message);
+      req.on('error', (err) => {
+        console.error('OpenSky HTTPS Error:', err.message);
         reject(
-          new InternalServerErrorException(
-            'Gagal mengambil data dari OpenSky (via proxy).',
-          ),
+          new InternalServerErrorException('Gagal menghubungi OpenSky (auth).'),
         );
       });
 
-      request.on('timeout', () => {
-        request.destroy();
-        console.error('Proxy HTTPS Timeout');
+      req.on('timeout', () => {
+        req.destroy();
+        console.error('OpenSky Timeout');
         reject(
           new InternalServerErrorException(
-            'Timeout saat menghubungi proxy OpenSky.',
+            'Timeout saat menghubungi OpenSky (auth).',
           ),
         );
       });
