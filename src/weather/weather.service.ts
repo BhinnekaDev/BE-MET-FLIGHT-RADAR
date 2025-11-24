@@ -161,12 +161,32 @@ export class WeatherService {
 
   // memanggil getWeatherForAllAirports tapi tidak melempar error jika gagal menyimpan
   async getWeatherRealtimeAndSaveHidden() {
-    this.fetchAndSaveWeatherForAllAirports().catch((err) => {
-      console.error('[Silent Save Error] Weather save failed:', err);
-    });
+    let silentErrors: Array<{ airport: string; error: string }> = [];
 
-    return await this.getWeatherForAllAirports();
+    await this.fetchAndSaveWeatherForAllAirports()
+      .then((res) => {
+        silentErrors = res.result
+          .filter((r) => r.status === 'failed')
+          .map((r) => ({
+            airport: r.airport,
+            error: r.error ?? 'Unknown error',
+          }));
+      })
+      .catch((err) => {
+        silentErrors.push({
+          airport: 'all',
+          error: err.message || 'Unknown error',
+        });
+      });
+
+    const realtimeData = await this.getWeatherForAllAirports();
+
+    return {
+      ...realtimeData,
+      silent_errors: silentErrors,
+    };
   }
+
   /**
    *
    * untuk aggregation weather data
