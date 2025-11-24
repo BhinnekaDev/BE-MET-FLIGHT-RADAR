@@ -10,6 +10,11 @@ export class WeatherController {
     return this.weatherService.getWeatherRealtimeAndSaveHidden();
   }
 
+  @Get()
+  async getSaveWeather() {
+    return this.weatherService.fetchAndSaveWeatherForAllAirports();
+  }
+
   @Get('rata-rata/:interval')
   async aggregateManual(@Param('interval') interval: string) {
     const allowed = ['minute', 'hour', 'day', 'month'];
