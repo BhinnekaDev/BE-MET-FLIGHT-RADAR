@@ -130,10 +130,14 @@ export class WeatherService {
           snow_1h: w.snow?.['1h'] ?? null,
           snow_3h: w.snow?.['3h'] ?? null,
 
-          sunrise: w.sys?.sunrise ?? null,
-          sunset: w.sys?.sunset ?? null,
+          sunrise: w.sys?.sunrise
+            ? new Date(w.sys.sunrise * 1000).toISOString()
+            : null,
+          sunset: w.sys?.sunset
+            ? new Date(w.sys.sunset * 1000).toISOString()
+            : null,
           timezone_offset: w.timezone ?? null,
-          data_timestamp: w.dt ?? null,
+          data_timestamp: w.dt ? new Date(w.dt * 1000).toISOString() : null,
 
           airport_id: ap.id,
         };
