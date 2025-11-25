@@ -1,4 +1,4 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { WeatherService } from './weather.service';
 
 @Controller('weather')
@@ -10,10 +10,10 @@ export class WeatherController {
   //   return this.weatherService.getWeatherForAllAirports();
   // }
 
-  // @Get()
-  // async getSaveWeather() {
-  //   return this.weatherService.fetchAndSaveWeatherForAllAirports();
-  // }
+  @Get('fetch-now')
+  async getSaveWeather() {
+    return this.weatherService.fetchAndSaveWeatherForAllAirports();
+  }
 
   // @Get('rata-rata/:interval')
   // async aggregateManual(@Param('interval') interval: string) {
@@ -25,4 +25,19 @@ export class WeatherController {
 
   //   return this.weatherService.aggregate(interval as any);
   // }
+
+  @Get('aggregate/minute')
+  async aggregateMinute() {
+    return this.weatherService.aggregate('minute');
+  }
+
+  @Get('aggregate/hour')
+  async aggregateHour() {
+    return this.weatherService.aggregate('hour');
+  }
+
+  @Get('aggregate/day')
+  async aggregateDay() {
+    return this.weatherService.aggregate('day');
+  }
 }

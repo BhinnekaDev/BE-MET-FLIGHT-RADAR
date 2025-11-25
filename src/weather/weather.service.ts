@@ -187,7 +187,7 @@ export class WeatherService {
     };
   }
 
-  @Cron('*/30 * * * * *') // setiap 30 detik
+  @Cron('*/1 * * * *') // setiap menit
   async handleCron() {
     this.logger.log('Memulai fetch weather otomatis...');
     const result = await this.fetchAndSaveWeatherForAllAirports();
@@ -204,9 +204,9 @@ export class WeatherService {
 
     switch (interval) {
       case 'minute':
-        // 5 minutes window
+        // 1 minute window
         return {
-          from: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+          from: new Date(now.getTime() - 1 * 60 * 1000).toISOString(),
           trunc: 'minute',
         };
 
