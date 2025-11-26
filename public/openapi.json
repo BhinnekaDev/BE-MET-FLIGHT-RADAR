@@ -15,20 +15,6 @@
         ]
       }
     },
-    "/aircraft/fetch": {
-      "get": {
-        "operationId": "AircraftController_fetch",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Aircraft"
-        ]
-      }
-    },
     "/weather/fetch-now": {
       "get": {
         "operationId": "WeatherController_getSaveWeather",
@@ -85,86 +71,39 @@
         ]
       }
     },
-    "/weather-analytics/basic-stats": {
+    "/weather-analytics/{airportId}": {
       "get": {
-        "operationId": "WeatheranalyticsController_getStats",
-        "parameters": [
-          {
-            "name": "interval",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "airportId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Weatheranalytics"
-        ]
-      }
-    },
-    "/weather-analytics/timeseries": {
-      "get": {
-        "operationId": "WeatheranalyticsController_getTimeSeries",
-        "parameters": [
-          {
-            "name": "interval",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "airportId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Weatheranalytics"
-        ]
-      }
-    },
-    "/weather-analytics/predict-next-day{airportId}": {
-      "get": {
-        "operationId": "WeatheranalyticsController_getNextDayPrediction",
+        "operationId": "WeatheranalyticsController_getWeatherSummary",
         "parameters": [
           {
             "name": "airportId",
             "required": true,
             "in": "path",
             "schema": {
-              "type": "string"
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Weatheranalytics"
+        ]
+      }
+    },
+    "/weather-analytics/predict/{airportId}": {
+      "get": {
+        "operationId": "WeatheranalyticsController_predict",
+        "parameters": [
+          {
+            "name": "airportId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
             }
           }
         ],

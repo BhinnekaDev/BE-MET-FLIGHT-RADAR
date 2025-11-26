@@ -1,15 +1,5 @@
 {
   "version": 2,
-  "crons": [
-    {
-      "path": "/api/weather/fetch-now",
-      "schedule": "*/1 * * * *"
-    },
-    { "path": "/api/aggregate/minute", "schedule": "*/1 * * * *" },
-    { "path": "/api/aggregate/hour", "schedule": "0 * * * *" },
-    { "path": "/api/aggregate/day", "schedule": "0 0 * * *" },
-    { "path": "/api/aggregate/month", "schedule": "0 0 1 * *" }
-  ],
   "builds": [{ "src": "api/index.ts", "use": "@vercel/node" }],
   "routes": [
     { "src": "/openapi.json", "dest": "/api/index.ts" },
