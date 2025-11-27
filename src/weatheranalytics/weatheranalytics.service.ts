@@ -1,17 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import * as tf from '@tensorflow/tfjs';
-import * as fs from 'fs';
 
 @Injectable()
 export class WeatheranalyticsService {
   private readonly logger = new Logger(WeatheranalyticsService.name);
-
-  private model: tf.LayersModel | null = null;
-
-  private bucket = 'weather-model';
-  private modelJsonPath = 'model/model.json';
-  private weightsPath = 'model/weights.bin';
 
   constructor(
     @Inject('SUPABASE_CLIENT')
@@ -89,152 +81,102 @@ export class WeatheranalyticsService {
     }
   }
 
-  /**
-   * Muat model ML untuk prediksi cuaca
-   */
-  async onModuleInit() {
-    this.logger.log('Checking ANN model in Supabase Storage…');
-
-    const exists = await this.checkModelExists();
-
-    if (exists) {
-      await this.loadModelFromSupabase();
-    } else {
-      this.logger.warn('Model tidak ditemukan → membuat model baru…');
-      await this.trainAndSaveModel();
-    }
-  }
-
-  private async checkModelExists(): Promise<boolean> {
-    const { data } = await this.supabase.storage
-      .from(this.bucket)
-      .list('model');
-
-    if (!data) return false;
-
-    const names = data.map((f) => f.name);
-    return names.includes('model.json') && names.includes('weights.bin');
-  }
-
-  private async loadModelFromSupabase() {
-    this.logger.log('📥 Downloading model files from Supabase…');
-
-    const { data: signed } = await this.supabase.storage
-      .from(this.bucket)
-      .createSignedUrl(this.modelJsonPath, 3600);
-
-    if (!signed?.signedUrl) {
-      throw new Error('Cannot load model.json');
-    }
-
-    const loaded = await tf.loadLayersModel(signed.signedUrl);
-
-    this.model = loaded;
-
-    this.logger.log('✅ ANN model loaded successfully');
-  }
-
-  async trainAndSaveModel() {
-    const { data, error } = await this.supabase
-      .from('weather_aggregation')
-      .select('avg_temp, avg_humidity, avg_pressure, avg_wind_speed')
-      .eq('interval_type', 'hour')
-      .order('interval_start', { ascending: true });
-
-    if (error) throw error;
-    if (!data || data.length < 30)
-      throw new Error('Data training terlalu sedikit');
-
-    const xs = tf.tensor2d(
-      data.map((d) => [
-        d.avg_temp / 50,
-        d.avg_humidity / 100,
-        d.avg_pressure / 1100,
-        d.avg_wind_speed / 50,
-      ]),
-    );
-
-    const ys = tf.tensor2d(data.map((d) => [d.avg_temp / 50]));
-
-    const model = tf.sequential();
-    model.add(
-      tf.layers.dense({ units: 8, activation: 'relu', inputShape: [4] }),
-    );
-    model.add(tf.layers.dense({ units: 8, activation: 'relu' }));
-    model.add(tf.layers.dense({ units: 1 }));
-
-    model.compile({
-      optimizer: tf.train.adam(0.01),
-      loss: 'meanSquaredError',
-    });
-
-    await model.fit(xs, ys, { epochs: 50 });
-
-    // FIX PATH → TensorFlow.js only supports this form in Vercel
-    const savePath = 'file:///tmp/weather_model/';
-    await model.save(savePath);
-
-    // baca file
-    const jsonBuffer = fs.readFileSync('/tmp/weather_model/model.json');
-    const weightsBuffer = fs.readFileSync('/tmp/weather_model/weights.bin');
-
-    // upload ke Supabase
-    await this.supabase.storage
-      .from(this.bucket)
-      .upload(this.modelJsonPath, jsonBuffer, {
-        contentType: 'application/json',
-        upsert: true,
-      });
-
-    await this.supabase.storage
-      .from(this.bucket)
-      .upload(this.weightsPath, weightsBuffer, {
-        contentType: 'application/octet-stream',
-        upsert: true,
-      });
-
-    this.logger.log('📤 ANN model saved to Supabase Storage successfully');
-
-    this.model = model;
-  }
-
   async predictTomorrow(airportId: number) {
-    if (!this.model) {
-      await this.loadModelFromSupabase();
-      if (!this.model) {
-        return { ok: false, reason: 'Model not loaded' };
+    const { data, error } = await this.supabase
+      .from('weather')
+      .select('temperature, timestamp')
+      .eq('airport_id', airportId)
+      .order('timestamp', { ascending: true });
+
+    if (error) throw new Error('Gagal mengambil data cuaca');
+    if (!data || data.length < 24)
+      throw new Error('Data cuaca tidak cukup untuk prediksi');
+
+    const temps: number[] = [];
+    const indexes: number[] = [];
+
+    for (let i = 0; i < data.length; i++) {
+      temps.push(data[i].temperature);
+      indexes.push(i + 1);
+    }
+
+    const coeffs = this.polynomialRegression(indexes, temps, 2);
+
+    const tomorrowIndex = indexes.length + 1;
+    const predictedTemp = this.predictPolynomial(coeffs, tomorrowIndex);
+
+    return {
+      airportId,
+      predicted_temperature: predictedTemp,
+      days_used: indexes.length,
+      model_coefficients: coeffs,
+    };
+  }
+
+  private polynomialRegression(data: number[], target: number[], degree = 2) {
+    const X: number[][] = [];
+
+    for (const value of data) {
+      const row: number[] = [];
+
+      for (let p = 0; p <= degree; p++) {
+        row.push(Math.pow(value, p));
+      }
+
+      X.push(row);
+    }
+
+    const XT = this.transpose(X);
+    const XTX = this.multiply(XT, X);
+    const XTy = this.multiplyVec(XT, target);
+
+    return this.solveGaussian(XTX, XTy);
+  }
+
+  private predictPolynomial(coeffs: number[], x: number) {
+    return coeffs.reduce((sum, c, idx) => sum + c * Math.pow(x, idx), 0);
+  }
+
+  private transpose(m: number[][]) {
+    return m[0].map((_, i) => m.map((row) => row[i]));
+  }
+
+  private multiply(A: number[][], B: number[][]) {
+    return A.map((row) =>
+      B[0].map((_, j) => row.reduce((sum, _, k) => sum + row[k] * B[k][j], 0)),
+    );
+  }
+
+  private multiplyVec(A: number[][], v: number[]) {
+    return A.map((row) => row.reduce((sum, _, k) => sum + row[k] * v[k], 0));
+  }
+
+  private solveGaussian(A: number[][], b: number[]) {
+    const n = b.length;
+    const M = A.map((row, i) => [...row, b[i]]);
+
+    for (let i = 0; i < n; i++) {
+      let maxRow = i;
+      for (let k = i + 1; k < n; k++) {
+        if (Math.abs(M[k][i]) > Math.abs(M[maxRow][i])) {
+          maxRow = k;
+        }
+      }
+      [M[i], M[maxRow]] = [M[maxRow], M[i]];
+
+      const pivot = M[i][i];
+      for (let j = i; j < n + 1; j++) M[i][j] /= pivot;
+
+      for (let k = 0; k < n; k++) {
+        if (k !== i) {
+          const factor = M[k][i];
+          for (let j = i; j < n + 1; j++) {
+            M[k][j] -= factor * M[i][j];
+          }
+        }
       }
     }
 
-    const { data, error } = await this.supabase
-      .from('weather_aggregation')
-      .select('avg_temp, avg_humidity, avg_pressure, avg_wind_speed')
-      .eq('airport_id', airportId)
-      .eq('interval_type', 'hour')
-      .order('interval_start', { ascending: true })
-      .limit(1);
-
-    if (error) throw error;
-    if (!data || !data.length) throw new Error('Data tidak ditemukan');
-
-    const d = data[0];
-
-    const input = tf.tensor2d([
-      [
-        d.avg_temp / 50,
-        d.avg_humidity / 100,
-        d.avg_pressure / 1100,
-        d.avg_wind_speed / 50,
-      ],
-    ]);
-
-    const output = this.model.predict(input) as tf.Tensor;
-    const predicted = (await output.array())[0][0] * 50;
-
-    return {
-      ok: true,
-      airport_id: airportId,
-      predicted_temp_tomorrow: predicted,
-    };
+    return M.map((row) => row[n]);
   }
 }
