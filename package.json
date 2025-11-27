@@ -33,7 +33,6 @@
     "@scalar/nestjs-api-reference": "^1.0.8",
     "@supabase/supabase-js": "^2.84.0",
     "@tensorflow/tfjs": "^4.22.0",
-    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
     "aws-serverless-express": "^3.4.0",
     "axios": "^1.13.2",
     "class-transformer": "^0.5.1",
