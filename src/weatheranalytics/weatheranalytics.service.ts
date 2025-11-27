@@ -156,7 +156,6 @@ export class WeatheranalyticsService {
 
     const ys = tf.tensor2d(data.map((d) => [d.avg_temp / 50]));
 
-    // 🔥 INI model baru - tidak gunakan this.model
     const model = tf.sequential();
     model.add(
       tf.layers.dense({ units: 8, activation: 'relu', inputShape: [4] }),
@@ -171,13 +170,15 @@ export class WeatheranalyticsService {
 
     await model.fit(xs, ys, { epochs: 50 });
 
-    // simpan ke /tmp
-    const savePath = 'file:///tmp/weather_model';
+    // FIX PATH → TensorFlow.js only supports this form in Vercel
+    const savePath = 'file:///tmp/weather_model/';
     await model.save(savePath);
 
+    // baca file
     const jsonBuffer = fs.readFileSync('/tmp/weather_model/model.json');
     const weightsBuffer = fs.readFileSync('/tmp/weather_model/weights.bin');
 
+    // upload ke Supabase
     await this.supabase.storage
       .from(this.bucket)
       .upload(this.modelJsonPath, jsonBuffer, {
@@ -199,7 +200,10 @@ export class WeatheranalyticsService {
 
   async predictTomorrow(airportId: number) {
     if (!this.model) {
-      return { ok: false, reason: 'Model not loaded' };
+      await this.loadModelFromSupabase();
+      if (!this.model) {
+        return { ok: false, reason: 'Model not loaded' };
+      }
     }
 
     const { data, error } = await this.supabase
