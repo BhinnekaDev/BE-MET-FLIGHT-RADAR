@@ -1,12 +1,17 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import * as tf from '@tensorflow/tfjs';
+import * as fs from 'fs';
 
 @Injectable()
 export class WeatheranalyticsService {
   private readonly logger = new Logger(WeatheranalyticsService.name);
 
   private model: tf.LayersModel | null = null;
+
+  private bucket = 'weather-model';
+  private modelJsonPath = 'model/model.json';
+  private weightsPath = 'model/weights.bin';
 
   constructor(
     @Inject('SUPABASE_CLIENT')
@@ -53,31 +58,6 @@ export class WeatheranalyticsService {
     };
   }
 
-  /**
-   * Muat model ML untuk prediksi cuaca
-   */
-
-  async loadModel() {
-    if (this.model) return this.model;
-
-    try {
-      await tf.setBackend('cpu');
-      await tf.ready();
-
-      const MODEL_URL = `${process.env.SUPABASE_URL}/storage/v1/object/public/weather-model/weather_model.json`;
-
-      this.model = await tf.loadLayersModel(MODEL_URL);
-
-      this.logger.log(
-        'Weather Prediction Model Loaded Successfully (CPU backend)',
-      );
-      return this.model;
-    } catch (err) {
-      this.logger.error('Failed loading ML model', err);
-      return null;
-    }
-  }
-
   formatLabel(interval: string, dateStr: string) {
     const date = new Date(dateStr);
     const monthNames = [
@@ -109,59 +89,148 @@ export class WeatheranalyticsService {
     }
   }
 
-  async getHistoricalHourlyWeather(airportId: number) {
+  /**
+   * Muat model ML untuk prediksi cuaca
+   */
+  async onModuleInit() {
+    this.logger.log('Checking ANN model in Supabase Storage…');
+
+    const exists = await this.checkModelExists();
+
+    if (exists) {
+      await this.loadModelFromSupabase();
+    } else {
+      this.logger.warn('Model tidak ditemukan → membuat model baru…');
+      await this.trainAndSaveModel();
+    }
+  }
+
+  private async checkModelExists(): Promise<boolean> {
+    const { data } = await this.supabase.storage
+      .from(this.bucket)
+      .list('model');
+
+    if (!data) return false;
+
+    const names = data.map((f) => f.name);
+    return names.includes('model.json') && names.includes('weights.bin');
+  }
+
+  private async loadModelFromSupabase() {
+    this.logger.log('📥 Downloading model files from Supabase…');
+
+    const { data: signed } = await this.supabase.storage
+      .from(this.bucket)
+      .createSignedUrl(this.modelJsonPath, 3600);
+
+    if (!signed?.signedUrl) {
+      throw new Error('Cannot load model.json');
+    }
+
+    const loaded = await tf.loadLayersModel(signed.signedUrl);
+
+    this.model = loaded;
+
+    this.logger.log('✅ ANN model loaded successfully');
+  }
+
+  async trainAndSaveModel() {
     const { data, error } = await this.supabase
       .from('weather_aggregation')
-      .select('*')
-      .eq('airport_id', airportId)
+      .select('avg_temp, avg_humidity, avg_pressure, avg_wind_speed')
       .eq('interval_type', 'hour')
       .order('interval_start', { ascending: true });
 
     if (error) throw error;
-    return data;
-  }
+    if (!data || data.length < 30)
+      throw new Error('Data training terlalu sedikit');
 
-  prepareInput(data: any[]) {
-    const last24 = data.slice(-24);
+    const xs = tf.tensor2d(
+      data.map((d) => [
+        d.avg_temp / 50,
+        d.avg_humidity / 100,
+        d.avg_pressure / 1100,
+        d.avg_wind_speed / 50,
+      ]),
+    );
 
-    const seq = last24.map((r) => [
-      r.avg_temp ?? 0,
-      r.avg_humidity ?? 0,
-      r.avg_pressure ?? 0,
-      r.avg_wind_speed ?? 0,
-    ]);
+    const ys = tf.tensor2d(data.map((d) => [d.avg_temp / 50]));
 
-    return tf.tensor3d([seq]); // shape: [1,24,4]
-  }
+    // 🔥 INI model baru - tidak gunakan this.model
+    const model = tf.sequential();
+    model.add(
+      tf.layers.dense({ units: 8, activation: 'relu', inputShape: [4] }),
+    );
+    model.add(tf.layers.dense({ units: 8, activation: 'relu' }));
+    model.add(tf.layers.dense({ units: 1 }));
 
-  decodeWeatherClass(idx: number) {
-    const labels = ['Clear', 'Clouds', 'Rain', 'Drizzle', 'Thunderstorm'];
-    return labels[idx] ?? 'Unknown';
+    model.compile({
+      optimizer: tf.train.adam(0.01),
+      loss: 'meanSquaredError',
+    });
+
+    await model.fit(xs, ys, { epochs: 50 });
+
+    // simpan ke /tmp
+    const savePath = 'file:///tmp/weather_model';
+    await model.save(savePath);
+
+    const jsonBuffer = fs.readFileSync('/tmp/weather_model/model.json');
+    const weightsBuffer = fs.readFileSync('/tmp/weather_model/weights.bin');
+
+    await this.supabase.storage
+      .from(this.bucket)
+      .upload(this.modelJsonPath, jsonBuffer, {
+        contentType: 'application/json',
+        upsert: true,
+      });
+
+    await this.supabase.storage
+      .from(this.bucket)
+      .upload(this.weightsPath, weightsBuffer, {
+        contentType: 'application/octet-stream',
+        upsert: true,
+      });
+
+    this.logger.log('📤 ANN model saved to Supabase Storage successfully');
+
+    this.model = model;
   }
 
   async predictTomorrow(airportId: number) {
-    const history = await this.getHistoricalHourlyWeather(airportId);
-
-    if (!history || history.length < 24) {
-      return { ok: false, reason: 'Not enough data to predict' };
+    if (!this.model) {
+      return { ok: false, reason: 'Model not loaded' };
     }
 
-    const inputTensor = this.prepareInput(history);
+    const { data, error } = await this.supabase
+      .from('weather_aggregation')
+      .select('avg_temp, avg_humidity, avg_pressure, avg_wind_speed')
+      .eq('airport_id', airportId)
+      .eq('interval_type', 'hour')
+      .order('interval_start', { ascending: true })
+      .limit(1);
 
-    const model = await this.loadModel();
-    if (!model) return { ok: false, reason: 'Model not loaded' };
+    if (error) throw error;
+    if (!data || !data.length) throw new Error('Data tidak ditemukan');
 
-    const prediction = model.predict(inputTensor) as tf.Tensor;
-    const output = prediction.arraySync()[0];
+    const d = data[0];
+
+    const input = tf.tensor2d([
+      [
+        d.avg_temp / 50,
+        d.avg_humidity / 100,
+        d.avg_pressure / 1100,
+        d.avg_wind_speed / 50,
+      ],
+    ]);
+
+    const output = this.model.predict(input) as tf.Tensor;
+    const predicted = (await output.array())[0][0] * 50;
 
     return {
+      ok: true,
       airport_id: airportId,
-      predicted_temp: output[0],
-      predicted_humidity: output[1],
-      predicted_pressure: output[2],
-      predicted_wind_speed: output[3],
-      predicted_weather: this.decodeWeatherClass(output[4]),
-      created_at: new Date().toISOString(),
+      predicted_temp_tomorrow: predicted,
     };
   }
 }
