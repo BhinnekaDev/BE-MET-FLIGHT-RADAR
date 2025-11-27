@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import * as tf from '@tensorflow/tfjs';
-import '@tensorflow/tfjs-backend-wasm';
 
 @Injectable()
 export class WeatheranalyticsService {
@@ -62,14 +61,16 @@ export class WeatheranalyticsService {
     if (this.model) return this.model;
 
     try {
-      await tf.setBackend('wasm');
+      await tf.setBackend('cpu');
       await tf.ready();
 
       const MODEL_URL = `${process.env.SUPABASE_URL}/storage/v1/object/public/weather-model/weather_model.json`;
 
       this.model = await tf.loadLayersModel(MODEL_URL);
 
-      this.logger.log('Weather Prediction Model Loaded Successfully');
+      this.logger.log(
+        'Weather Prediction Model Loaded Successfully (CPU backend)',
+      );
       return this.model;
     } catch (err) {
       this.logger.error('Failed loading ML model', err);
