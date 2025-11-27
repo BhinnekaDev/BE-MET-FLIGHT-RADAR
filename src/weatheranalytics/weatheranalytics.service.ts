@@ -83,100 +83,128 @@ export class WeatheranalyticsService {
 
   async predictTomorrow(airportId: number) {
     const { data, error } = await this.supabase
-      .from('weather')
-      .select('temperature, timestamp')
+      .from('weather_aggregation')
+      .select('avg_temp, interval_start')
       .eq('airport_id', airportId)
-      .order('timestamp', { ascending: true });
+      .order('interval_start', { ascending: true });
 
-    if (error) throw new Error('Gagal mengambil data cuaca');
-    if (!data || data.length < 24)
-      throw new Error('Data cuaca tidak cukup untuk prediksi');
-
-    const temps: number[] = [];
-    const indexes: number[] = [];
-
-    for (let i = 0; i < data.length; i++) {
-      temps.push(data[i].temperature);
-      indexes.push(i + 1);
+    if (error) {
+      throw new Error('Supabase error: ' + error.message);
     }
 
-    const coeffs = this.polynomialRegression(indexes, temps, 2);
+    if (!data || data.length < 24) {
+      throw new Error('Data tidak cukup untuk prediksi.');
+    }
 
-    const tomorrowIndex = indexes.length + 1;
-    const predictedTemp = this.predictPolynomial(coeffs, tomorrowIndex);
+    const temps = data.map((d) => Number(d.avg_temp));
+    const indexes = data.map((_, i) => i + 1);
+
+    const coeffs = this.safePolynomialRegression(indexes, temps, 2);
+    const tomorrowX = indexes.length + 1;
+    const predicted = this.predictPolynomial(coeffs, tomorrowX);
 
     return {
       airportId,
-      predicted_temperature: predictedTemp,
-      days_used: indexes.length,
-      model_coefficients: coeffs,
+      predicted_temperature: Number(predicted.toFixed(3)),
+      model: 'polynomial_regression_degree_2',
+      coefficients: coeffs,
+      data_points: data.length,
     };
   }
 
-  private polynomialRegression(data: number[], target: number[], degree = 2) {
+  public safePolynomialRegression(
+    data: number[],
+    target: number[],
+    degree = 2,
+  ): number[] {
     const X: number[][] = [];
 
-    for (const value of data) {
+    for (const v of data) {
       const row: number[] = [];
-
-      for (let p = 0; p <= degree; p++) {
-        row.push(Math.pow(value, p));
-      }
-
+      for (let p = 0; p <= degree; p++) row.push(Math.pow(v, p));
       X.push(row);
     }
 
-    const XT = this.transpose(X);
-    const XTX = this.multiply(XT, X);
-    const XTy = this.multiplyVec(XT, target);
+    const XT = this.transpose(X); // number[][]
+    const XTX = this.multiply(XT, X); // number[][]
+    const XTy = this.multiplyVec(XT, target); // number[]
 
-    return this.solveGaussian(XTX, XTy);
+    return this.solveGaussianSafe(XTX, XTy); // number[]
   }
 
   private predictPolynomial(coeffs: number[], x: number) {
-    return coeffs.reduce((sum, c, idx) => sum + c * Math.pow(x, idx), 0);
+    return coeffs.reduce((sum, c, i) => sum + c * Math.pow(x, i), 0);
   }
 
-  private transpose(m: number[][]) {
-    return m[0].map((_, i) => m.map((row) => row[i]));
-  }
-
-  private multiply(A: number[][], B: number[][]) {
-    return A.map((row) =>
-      B[0].map((_, j) => row.reduce((sum, _, k) => sum + row[k] * B[k][j], 0)),
-    );
-  }
-
-  private multiplyVec(A: number[][], v: number[]) {
-    return A.map((row) => row.reduce((sum, _, k) => sum + row[k] * v[k], 0));
-  }
-
-  private solveGaussian(A: number[][], b: number[]) {
-    const n = b.length;
-    const M = A.map((row, i) => [...row, b[i]]);
+  private solveGaussianSafe(A: number[][], b: number[]): number[] {
+    const n = A.length;
+    const M = A.map((row) => [...row]);
+    const x = [...b];
 
     for (let i = 0; i < n; i++) {
       let maxRow = i;
+
       for (let k = i + 1; k < n; k++) {
         if (Math.abs(M[k][i]) > Math.abs(M[maxRow][i])) {
           maxRow = k;
         }
       }
+
       [M[i], M[maxRow]] = [M[maxRow], M[i]];
+      [x[i], x[maxRow]] = [x[maxRow], x[i]];
 
-      const pivot = M[i][i];
-      for (let j = i; j < n + 1; j++) M[i][j] /= pivot;
+      for (let k = i + 1; k < n; k++) {
+        const factor = M[k][i] / M[i][i];
 
-      for (let k = 0; k < n; k++) {
-        if (k !== i) {
-          const factor = M[k][i];
-          for (let j = i; j < n + 1; j++) {
-            M[k][j] -= factor * M[i][j];
-          }
+        for (let j = i; j < n; j++) {
+          M[k][j] -= factor * M[i][j];
         }
+        x[k] -= factor * x[i];
       }
     }
 
-    return M.map((row) => row[n]);
+    const result = Array(n).fill(0);
+    for (let i = n - 1; i >= 0; i--) {
+      let sum = x[i];
+      for (let j = i + 1; j < n; j++) sum -= M[i][j] * result[j];
+      result[i] = sum / M[i][i];
+    }
+
+    return result;
+  }
+
+  private transpose(A: number[][]): number[][] {
+    return A[0].map((_, colIndex) => A.map((row) => row[colIndex]));
+  }
+
+  private multiply(A: number[][], B: number[][]): number[][] {
+    const result: number[][] = [];
+
+    for (let i = 0; i < A.length; i++) {
+      result[i] = [];
+      for (let j = 0; j < B[0].length; j++) {
+        let sum = 0;
+        for (let k = 0; k < B.length; k++) {
+          sum += A[i][k] * B[k][j];
+        }
+        result[i][j] = sum;
+      }
+    }
+
+    return result;
+  }
+
+  private multiplyVec(A: number[][], v: number[]): number[] {
+    const result: number[] = [];
+
+    for (let i = 0; i < A.length; i++) {
+      let sum = 0;
+      for (let j = 0; j < v.length; j++) {
+        sum += A[i][j] * v[j];
+      }
+      result[i] = sum;
+    }
+
+    return result;
   }
 }
