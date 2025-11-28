@@ -14,4 +14,9 @@ export class WeatheranalyticsController {
   async predict(@Param('airportId', ParseIntPipe) airportId: number) {
     return this.weatherService.predictTomorrow(airportId);
   }
+
+  @Get('predict-range/:airportId')
+  async predictRange(@Param('airportId', ParseIntPipe) airportId: number) {
+    return this.weatherService.getDailyTemperatureMining(airportId);
+  }
 }
