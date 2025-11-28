@@ -217,15 +217,34 @@ export class WeatheranalyticsService {
       .not('weather_main', 'is', null)
       .order('data_timestamp', { ascending: true });
 
-    if (error) throw new Error('Gagal fetch data cuaca');
-    if (!data || data.length === 0)
-      return { airportId, status: 'no_data', data: [] };
+    if (error) {
+      console.error('Supabase error:', error);
+      return {
+        airportId,
+        status: 'db_error',
+        message: error.message ?? 'Gagal fetch data cuaca',
+      };
+    }
 
-    const temps = data.map((d) => d.temp);
+    if (!data || data.length === 0) {
+      return { airportId, status: 'no_data', data: [] };
+    }
+
+    const temps = data
+      .map((d) => d.temp)
+      .filter((t) => typeof t === 'number' && !isNaN(t));
+
+    if (temps.length === 0) {
+      return { airportId, status: 'no_valid_temperature', data: [] };
+    }
 
     const cleanedTemps = this.removeOutliers(temps);
 
-    const clusters = this.kMeans1D(cleanedTemps, 3);
+    if (cleanedTemps.length === 0) {
+      return { airportId, status: 'all_cleaned_removed', data: [] };
+    }
+
+    const clusters = this.safeKMeans(cleanedTemps, 3);
 
     const weatherRanges = this.groupByWeatherMain(data);
 
@@ -242,31 +261,43 @@ export class WeatheranalyticsService {
     if (values.length < 5) return values;
 
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
     const std = Math.sqrt(
-      values.map((v) => Math.pow(v - mean, 2)).reduce((a, b) => a + b, 0) /
-        values.length,
+      values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length,
     );
+
+    if (std === 0) return values;
 
     const zFiltered = values.filter((v) => Math.abs((v - mean) / std) < 3);
 
+    if (zFiltered.length === 0) return values;
+
     const sorted = [...zFiltered].sort((a, b) => a - b);
+
     const q1 = sorted[Math.floor(sorted.length * 0.25)];
     const q3 = sorted[Math.floor(sorted.length * 0.75)];
     const iqr = q3 - q1;
+
     const lower = q1 - 1.5 * iqr;
     const upper = q3 + 1.5 * iqr;
 
     const finalFiltered = zFiltered.filter((v) => v >= lower && v <= upper);
 
-    return finalFiltered;
+    return finalFiltered.length > 0 ? finalFiltered : zFiltered;
   }
 
-  private kMeans1D(values: number[], k = 3) {
+  private safeKMeans(values: number[], k = 3) {
     if (values.length <= k) {
-      return values.map((v) => ({ center: v, values: [v] }));
+      return values.map((v, i) => ({
+        cluster: i,
+        center: v,
+        min: v,
+        max: v,
+        sample_size: 1,
+      }));
     }
 
-    let centroids = values.sort((a, b) => a - b).slice(0, k);
+    let centroids = [...values].sort((a, b) => a - b).slice(0, k);
 
     let assignments = new Array(values.length).fill(0);
     let changed = true;
@@ -292,8 +323,19 @@ export class WeatheranalyticsService {
       }
     }
 
-    const result = centroids.map((c, idx) => {
+    return centroids.map((c, idx) => {
       const clusterVals = values.filter((_, i) => assignments[i] === idx);
+
+      if (clusterVals.length === 0) {
+        return {
+          cluster: idx,
+          center: Number(c.toFixed(2)),
+          min: c,
+          max: c,
+          sample_size: 0,
+        };
+      }
+
       return {
         cluster: idx,
         center: Number(c.toFixed(2)),
@@ -302,8 +344,6 @@ export class WeatheranalyticsService {
         sample_size: clusterVals.length,
       };
     });
-
-    return result;
   }
 
   private groupByWeatherMain(data: { temp: number; weather_main: string }[]) {
@@ -313,7 +353,10 @@ export class WeatheranalyticsService {
     > = {};
 
     for (const row of data) {
+      if (!row || typeof row.temp !== 'number' || !row.weather_main) continue;
+
       const key = row.weather_main;
+
       if (!grouped[key]) {
         grouped[key] = {
           min: row.temp,
