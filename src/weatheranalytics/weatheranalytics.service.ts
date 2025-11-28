@@ -138,9 +138,7 @@ export class WeatheranalyticsService {
       .eq('airport_id', airportId)
       .order('interval_start', { ascending: true });
 
-    if (error) {
-      throw new Error('Supabase error: ' + error.message);
-    }
+    if (error) throw new Error('Supabase error: ' + error.message);
 
     if (!data || data.length < 24) {
       throw new Error('Data tidak cukup untuk prediksi.');
@@ -150,19 +148,31 @@ export class WeatheranalyticsService {
     const indexes = data.map((_, i) => i + 1);
 
     const coeffs = this.safePolynomialRegression(indexes, temps, 2);
-    const tomorrowX = indexes.length + 1;
-    const predicted = this.predictPolynomial(coeffs, tomorrowX);
+    const predicted = this.predictPolynomial(coeffs, indexes.length + 1);
+    const predictedTemp = Number(predicted.toFixed(3));
+
+    const mining = await this.getDailyTemperatureMining(airportId);
+
+    let predictedWeatherMain: string | null = null;
+
+    if (mining && mining.ranges_per_weather) {
+      predictedWeatherMain = this.pickWeatherMainByTemperature(
+        predictedTemp,
+        mining.ranges_per_weather,
+      );
+    }
 
     return {
       airportId,
-      predicted_temperature: Number(predicted.toFixed(3)),
+      predicted_temperature: predictedTemp,
+      predicted_weather_main: predictedWeatherMain,
       model: 'polynomial_regression_degree_2',
       coefficients: coeffs,
       data_points: data.length,
     };
   }
 
-  public safePolynomialRegression(
+  private safePolynomialRegression(
     data: number[],
     target: number[],
     degree = 2,
@@ -256,6 +266,40 @@ export class WeatheranalyticsService {
     }
 
     return result;
+  }
+
+  private pickWeatherMainByTemperature(
+    predictedTemp: number,
+    ranges: Record<
+      string,
+      { min: number; max: number; avg: number; count: number }
+    >,
+  ): string | null {
+    // kumpulkan candidate weather yang rentang suhunya cocok
+    const candidates: { key: string; diff: number }[] = [];
+
+    for (const [key, range] of Object.entries(ranges)) {
+      if (predictedTemp >= range.min && predictedTemp <= range.max) {
+        const diff = Math.abs(predictedTemp - range.avg);
+        candidates.push({ key, diff });
+      }
+    }
+
+    if (candidates.length > 0) {
+      return candidates.sort((a, b) => a.diff - b.diff)[0].key;
+    }
+
+    let dominant: string | null = null;
+    let maxCount = -1;
+
+    for (const [key, range] of Object.entries(ranges)) {
+      if (range.count > maxCount) {
+        maxCount = range.count;
+        dominant = key;
+      }
+    }
+
+    return dominant;
   }
 
   async getDailyTemperatureMining(airportId: number) {
