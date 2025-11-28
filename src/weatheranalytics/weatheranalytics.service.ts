@@ -5,17 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-
-type WeatherRange = {
-  min: number;
-  max: number;
-  avg: number;
-  count: number;
-};
-
-type WeatherMiningResult = {
-  ranges_per_weather: Record<string, WeatherRange>;
-};
+import { ClusterResult, WeatherMiningResult, WeatherRange } from './types';
 
 @Injectable()
 export class WeatheranalyticsService {
@@ -97,7 +87,15 @@ export class WeatheranalyticsService {
     }
   }
 
-  async predictTomorrow(airportId: number) {
+  async predictTomorrow(airportId: number): Promise<{
+    airportId: number;
+    predicted_temperature: number;
+    predicted_weather_main: string;
+    matched_range: WeatherRange | null;
+    model: string;
+    coefficients: number[];
+    data_points: number;
+  }> {
     try {
       const { data, error } = await this.supabase
         .from('weather_aggregation')
@@ -280,48 +278,75 @@ export class WeatheranalyticsService {
     };
   }
 
-  async getDailyTemperatureMining(airportId: number) {
-    const { data, error } = await this.supabase
-      .from('weather')
-      .select('temp, weather_main, data_timestamp')
-      .eq('airport_id', airportId)
-      .not('temp', 'is', null)
-      .not('weather_main', 'is', null)
-      .order('data_timestamp', { ascending: true });
+  async getDailyTemperatureMining(airportId: number): Promise<
+    | WeatherMiningResult
+    | {
+        airportId: number;
+        status: string;
+        data: any[];
+        ranges_per_weather: Record<string, WeatherRange>;
+        clusters: ClusterResult[];
+      }
+  > {
+    try {
+      const { data, error } = await this.supabase
+        .from('weather')
+        .select('temp, weather_main, data_timestamp')
+        .eq('airport_id', airportId)
+        .not('temp', 'is', null)
+        .not('weather_main', 'is', null)
+        .order('data_timestamp', { ascending: true });
 
-    if (error) {
-      throw new Error('Gagal fetch data cuaca');
-    }
+      if (error) {
+        this.logger.error('Supabase error:', error);
+        throw new Error('Gagal fetch data cuaca');
+      }
 
-    if (!data || data.length === 0) {
-      return { airportId, status: 'no_data', data: [] };
-    }
+      if (!data || data.length === 0) {
+        return {
+          airportId,
+          status: 'no_data',
+          data: [],
+          ranges_per_weather: {} as Record<string, WeatherRange>,
+          clusters: [] as ClusterResult[],
+        };
+      }
 
-    const temps = data.map((d) => d.temp);
+      const temps = data.map((d) => d.temp);
 
-    const cleanedTemps = this.removeOutliersSafe(temps);
+      let cleanedTemps: number[] = [];
+      try {
+        cleanedTemps = this.removeOutliersSafe(temps);
+      } catch (e) {
+        this.logger.error('removeOutliersSafe error:', e);
+        cleanedTemps = temps;
+      }
 
-    if (cleanedTemps.length === 0) {
+      let clusters: ClusterResult[] = [];
+      try {
+        clusters = this.kMeans1DSafe(cleanedTemps, 3);
+      } catch (e) {
+        this.logger.error('kMeans error:', e);
+      }
+
+      let ranges: Record<string, WeatherRange> = {};
+      try {
+        ranges = this.groupByWeatherMainSafe(data);
+      } catch (e) {
+        this.logger.error('groupByWeatherMainSafe error:', e);
+      }
+
       return {
         airportId,
-        status: 'insufficient_clean_data',
         total_raw: temps.length,
-        total_cleaned: 0,
-        clusters: [],
-        ranges_per_weather: {},
+        total_cleaned: cleanedTemps.length,
+        clusters,
+        ranges_per_weather: ranges,
       };
+    } catch (err) {
+      this.logger.error('getDailyTemperatureMining fatal error:', err);
+      throw new Error('Gagal mengambil data mining.');
     }
-
-    const clusters = this.kMeans1DSafe(cleanedTemps, 3);
-    const weatherRanges = this.groupByWeatherMainSafe(data);
-
-    return {
-      airportId,
-      total_raw: temps.length,
-      total_cleaned: cleanedTemps.length,
-      clusters,
-      ranges_per_weather: weatherRanges,
-    };
   }
 
   private removeOutliersSafe(values: number[]) {
