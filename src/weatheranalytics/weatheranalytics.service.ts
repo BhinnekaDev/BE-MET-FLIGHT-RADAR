@@ -1,14 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 
-interface WeatherRange {
-  min: number;
-  max: number;
-  avg: number;
-}
-
-type WeatherRangeMap = Record<string, WeatherRange>;
-
 @Injectable()
 export class WeatheranalyticsService {
   private readonly logger = new Logger(WeatheranalyticsService.name);
@@ -45,6 +37,7 @@ export class WeatheranalyticsService {
           max_wind_speed: row.max_wind_speed,
           most_common_weather: row.most_common_weather,
 
+          // tambahan format agar mudah dibaca
           label: this.formatLabel(interval, row.interval_start),
         }));
       }
@@ -95,9 +88,13 @@ export class WeatheranalyticsService {
       .eq('airport_id', airportId)
       .order('interval_start', { ascending: true });
 
-    if (error) throw new Error('Supabase error: ' + error.message);
-    if (!data || data.length < 24)
+    if (error) {
+      throw new Error('Supabase error: ' + error.message);
+    }
+
+    if (!data || data.length < 24) {
       throw new Error('Data tidak cukup untuk prediksi.');
+    }
 
     const temps = data.map((d) => Number(d.avg_temp));
     const indexes = data.map((_, i) => i + 1);
@@ -105,21 +102,10 @@ export class WeatheranalyticsService {
     const coeffs = this.safePolynomialRegression(indexes, temps, 2);
     const tomorrowX = indexes.length + 1;
     const predicted = this.predictPolynomial(coeffs, tomorrowX);
-    const predictedTemp = Number(predicted.toFixed(3));
-
-    const mining = await this.getDailyTemperatureMining(airportId);
-
-    const ranges = mining.ranges_per_weather ?? {};
-
-    const predictedWeather =
-      Object.keys(ranges).length > 0
-        ? this.inferWeatherFromTemperature(predictedTemp, ranges)
-        : 'Unknown';
 
     return {
       airportId,
-      predicted_temperature: predictedTemp,
-      predicted_weather_main: predictedWeather,
+      predicted_temperature: Number(predicted.toFixed(3)),
       model: 'polynomial_regression_degree_2',
       coefficients: coeffs,
       data_points: data.length,
@@ -220,32 +206,6 @@ export class WeatheranalyticsService {
     }
 
     return result;
-  }
-
-  private inferWeatherFromTemperature(
-    temp: number,
-    ranges: WeatherRangeMap,
-  ): string {
-    let bestMatch: string = '';
-    let smallestDiff = Infinity;
-
-    for (const [weather, range] of Object.entries(ranges)) {
-      const r = range as WeatherRange;
-
-      // Langsung cocok jika dalam min/max
-      if (temp >= r.min && temp <= r.max) {
-        return weather;
-      }
-
-      // Cari yang paling dekat ke avg
-      const diff = Math.abs(temp - r.avg);
-      if (diff < smallestDiff) {
-        smallestDiff = diff;
-        bestMatch = weather;
-      }
-    }
-
-    return bestMatch;
   }
 
   async getDailyTemperatureMining(airportId: number) {
