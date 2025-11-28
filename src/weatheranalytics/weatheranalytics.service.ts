@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 type WeatherRange = {
@@ -93,45 +98,68 @@ export class WeatheranalyticsService {
   }
 
   async predictTomorrow(airportId: number) {
-    const { data, error } = await this.supabase
-      .from('weather_aggregation')
-      .select('avg_temp, interval_start')
-      .eq('airport_id', airportId)
-      .order('interval_start', { ascending: true });
+    try {
+      const { data, error } = await this.supabase
+        .from('weather_aggregation')
+        .select('avg_temp, interval_start')
+        .eq('airport_id', airportId)
+        .order('interval_start', { ascending: true });
 
-    if (error) throw new Error('Supabase error: ' + error.message);
-    if (!data || data.length < 24)
-      throw new Error('Data tidak cukup untuk prediksi.');
+      if (error) {
+        this.logger.error('Supabase query error:', error);
+        throw new Error('Gagal mengambil data suhu.');
+      }
 
-    const temps = data.map((d) => Number(d.avg_temp));
-    const indexes = data.map((_, i) => i + 1);
+      if (!data || data.length < 24) {
+        throw new Error('Data tidak cukup untuk prediksi.');
+      }
 
-    // Polynomial regression degree 2
-    const coeffs = this.safePolynomialRegression(indexes, temps, 2);
-    const tomorrowX = indexes.length + 1;
-    const predictedTemp = Number(
-      this.predictPolynomial(coeffs, tomorrowX).toFixed(3),
-    );
+      const temps = data.map((d) => Number(d.avg_temp));
+      const indexes = data.map((_, i) => i + 1);
 
-    // Ambil mining
-    const mining = (await this.getDailyTemperatureMining(
-      airportId,
-    )) as WeatherMiningResult;
+      // regression guarded
+      let coeffs: number[];
+      try {
+        coeffs = this.safePolynomialRegression(indexes, temps, 2);
+      } catch (regErr) {
+        this.logger.error('Regression failed:', regErr);
+        throw new Error(
+          'Tidak dapat melakukan regresi polynomial (matrix singular).',
+        );
+      }
 
-    const ranges = mining?.ranges_per_weather ?? {};
+      const tomorrowX = indexes.length + 1;
+      const predictedTemp = Number(
+        this.predictPolynomial(coeffs, tomorrowX).toFixed(3),
+      );
 
-    // Tentukan weather berdasarkan rentang
-    const match = this.matchPredictedWeather(predictedTemp, ranges);
+      // mining
+      let mining: WeatherMiningResult;
+      try {
+        mining = (await this.getDailyTemperatureMining(
+          airportId,
+        )) as WeatherMiningResult;
+      } catch (miningErr) {
+        this.logger.error('Mining error:', miningErr);
+        throw new Error('Gagal mengambil data mining.');
+      }
 
-    return {
-      airportId,
-      predicted_temperature: predictedTemp,
-      predicted_weather_main: match.weather,
-      matched_range: match.detail,
-      model: 'polynomial_regression_degree_2',
-      coefficients: coeffs,
-      data_points: data.length,
-    };
+      const ranges = mining?.ranges_per_weather ?? {};
+      const match = this.matchPredictedWeather(predictedTemp, ranges);
+
+      return {
+        airportId,
+        predicted_temperature: predictedTemp,
+        predicted_weather_main: match.weather,
+        matched_range: match.detail,
+        model: 'polynomial_regression_degree_2',
+        coefficients: coeffs,
+        data_points: data.length,
+      };
+    } catch (err) {
+      this.logger.error('Prediction error:', err);
+      throw new InternalServerErrorException(err.message);
+    }
   }
 
   private predictPolynomial(coeffs: number[], x: number) {
