@@ -117,6 +117,29 @@
         ]
       }
     },
+    "/weather-analytics/predict-range/{airportId}": {
+      "get": {
+        "operationId": "WeatheranalyticsController_predictRange",
+        "parameters": [
+          {
+            "name": "airportId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Weatheranalytics"
+        ]
+      }
+    },
     "/locations/airports": {
       "get": {
         "operationId": "LocationsController_getAllAirportLocations",

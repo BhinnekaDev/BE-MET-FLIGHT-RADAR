@@ -207,4 +207,138 @@ export class WeatheranalyticsService {
 
     return result;
   }
+
+  async getDailyTemperatureMining(airportId: number) {
+    const { data, error } = await this.supabase
+      .from('weather')
+      .select('temp, weather_main, data_timestamp')
+      .eq('airport_id', airportId)
+      .not('temp', 'is', null)
+      .not('weather_main', 'is', null)
+      .order('data_timestamp', { ascending: true });
+
+    if (error) throw new Error('Gagal fetch data cuaca');
+    if (!data || data.length === 0)
+      return { airportId, status: 'no_data', data: [] };
+
+    const temps = data.map((d) => d.temp);
+
+    const cleanedTemps = this.removeOutliers(temps);
+
+    const clusters = this.kMeans1D(cleanedTemps, 3);
+
+    const weatherRanges = this.groupByWeatherMain(data);
+
+    return {
+      airportId,
+      total_raw: temps.length,
+      total_cleaned: cleanedTemps.length,
+      clusters,
+      ranges_per_weather: weatherRanges,
+    };
+  }
+
+  private removeOutliers(values: number[]) {
+    if (values.length < 5) return values;
+
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const std = Math.sqrt(
+      values.map((v) => Math.pow(v - mean, 2)).reduce((a, b) => a + b, 0) /
+        values.length,
+    );
+
+    const zFiltered = values.filter((v) => Math.abs((v - mean) / std) < 3);
+
+    const sorted = [...zFiltered].sort((a, b) => a - b);
+    const q1 = sorted[Math.floor(sorted.length * 0.25)];
+    const q3 = sorted[Math.floor(sorted.length * 0.75)];
+    const iqr = q3 - q1;
+    const lower = q1 - 1.5 * iqr;
+    const upper = q3 + 1.5 * iqr;
+
+    const finalFiltered = zFiltered.filter((v) => v >= lower && v <= upper);
+
+    return finalFiltered;
+  }
+
+  private kMeans1D(values: number[], k = 3) {
+    if (values.length <= k) {
+      return values.map((v) => ({ center: v, values: [v] }));
+    }
+
+    let centroids = values.sort((a, b) => a - b).slice(0, k);
+
+    let assignments = new Array(values.length).fill(0);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+
+      for (let i = 0; i < values.length; i++) {
+        const dists = centroids.map((c) => Math.abs(values[i] - c));
+        const clusterIndex = dists.indexOf(Math.min(...dists));
+        if (assignments[i] !== clusterIndex) {
+          assignments[i] = clusterIndex;
+          changed = true;
+        }
+      }
+
+      for (let j = 0; j < k; j++) {
+        const clusterVals = values.filter((_, idx) => assignments[idx] === j);
+        if (clusterVals.length > 0) {
+          centroids[j] =
+            clusterVals.reduce((a, b) => a + b, 0) / clusterVals.length;
+        }
+      }
+    }
+
+    const result = centroids.map((c, idx) => {
+      const clusterVals = values.filter((_, i) => assignments[i] === idx);
+      return {
+        cluster: idx,
+        center: Number(c.toFixed(2)),
+        min: Number(Math.min(...clusterVals).toFixed(2)),
+        max: Number(Math.max(...clusterVals).toFixed(2)),
+        sample_size: clusterVals.length,
+      };
+    });
+
+    return result;
+  }
+
+  private groupByWeatherMain(data: { temp: number; weather_main: string }[]) {
+    const grouped: Record<
+      string,
+      { min: number; max: number; total: number; count: number }
+    > = {};
+
+    for (const row of data) {
+      const key = row.weather_main;
+      if (!grouped[key]) {
+        grouped[key] = {
+          min: row.temp,
+          max: row.temp,
+          total: row.temp,
+          count: 1,
+        };
+      } else {
+        grouped[key].min = Math.min(grouped[key].min, row.temp);
+        grouped[key].max = Math.max(grouped[key].max, row.temp);
+        grouped[key].total += row.temp;
+        grouped[key].count += 1;
+      }
+    }
+
+    return Object.fromEntries(
+      Object.entries(grouped).map(([key, val]) => [
+        key,
+        {
+          min: Number(val.min.toFixed(2)),
+          max: Number(val.max.toFixed(2)),
+          avg: Number((val.total / val.count).toFixed(2)),
+          count: val.count,
+        },
+      ]),
+    );
+  }
 }
