@@ -1,6 +1,17 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 
+type WeatherRange = {
+  min: number;
+  max: number;
+  avg: number;
+  count: number;
+};
+
+type WeatherMiningResult = {
+  ranges_per_weather: Record<string, WeatherRange>;
+};
+
 @Injectable()
 export class WeatheranalyticsService {
   private readonly logger = new Logger(WeatheranalyticsService.name);
@@ -88,52 +99,55 @@ export class WeatheranalyticsService {
       .eq('airport_id', airportId)
       .order('interval_start', { ascending: true });
 
-    if (error) {
-      throw new Error('Supabase error: ' + error.message);
-    }
-
-    if (!data || data.length < 24) {
+    if (error) throw new Error('Supabase error: ' + error.message);
+    if (!data || data.length < 24)
       throw new Error('Data tidak cukup untuk prediksi.');
-    }
 
     const temps = data.map((d) => Number(d.avg_temp));
     const indexes = data.map((_, i) => i + 1);
 
+    // Polynomial regression degree 2
     const coeffs = this.safePolynomialRegression(indexes, temps, 2);
     const tomorrowX = indexes.length + 1;
-    const predicted = this.predictPolynomial(coeffs, tomorrowX);
+    const predictedTemp = Number(
+      this.predictPolynomial(coeffs, tomorrowX).toFixed(3),
+    );
+
+    // Ambil mining
+    const mining = (await this.getDailyTemperatureMining(
+      airportId,
+    )) as WeatherMiningResult;
+
+    const ranges = mining?.ranges_per_weather ?? {};
+
+    // Tentukan weather berdasarkan rentang
+    const match = this.matchPredictedWeather(predictedTemp, ranges);
 
     return {
       airportId,
-      predicted_temperature: Number(predicted.toFixed(3)),
+      predicted_temperature: predictedTemp,
+      predicted_weather_main: match.weather,
+      matched_range: match.detail,
       model: 'polynomial_regression_degree_2',
       coefficients: coeffs,
       data_points: data.length,
     };
   }
 
-  public safePolynomialRegression(
-    data: number[],
-    target: number[],
-    degree = 2,
-  ): number[] {
-    const X: number[][] = [];
-
-    for (const v of data) {
-      const row: number[] = [];
-      for (let p = 0; p <= degree; p++) row.push(Math.pow(v, p));
-      X.push(row);
-    }
-
-    const XT = this.transpose(X); // number[][]
-    const XTX = this.multiply(XT, X); // number[][]
-    const XTy = this.multiplyVec(XT, target); // number[]
-
-    return this.solveGaussianSafe(XTX, XTy); // number[]
-  }
-
   private predictPolynomial(coeffs: number[], x: number) {
     return coeffs.reduce((sum, c, i) => sum + c * Math.pow(x, i), 0);
+  }
+
+  private safePolynomialRegression(x: number[], y: number[], degree: number) {
+    const X = x.map((xi) =>
+      Array.from({ length: degree + 1 }, (_, k) => Math.pow(xi, k)),
+    );
+
+    const XT = this.transpose(X);
+    const XTX = this.multiply(XT, X);
+    const XTy = this.multiplyVec(XT, y);
+
+    return this.solveGaussianSafe(XTX, XTy);
   }
 
   private solveGaussianSafe(A: number[][], b: number[]): number[] {
@@ -164,9 +178,12 @@ export class WeatheranalyticsService {
     }
 
     const result = Array(n).fill(0);
+
     for (let i = n - 1; i >= 0; i--) {
       let sum = x[i];
-      for (let j = i + 1; j < n; j++) sum -= M[i][j] * result[j];
+      for (let j = i + 1; j < n; j++) {
+        sum -= M[i][j] * result[j];
+      }
       result[i] = sum / M[i][i];
     }
 
@@ -195,17 +212,44 @@ export class WeatheranalyticsService {
   }
 
   private multiplyVec(A: number[][], v: number[]): number[] {
-    const result: number[] = [];
+    return A.map((row) => row.reduce((sum, val, i) => sum + val * v[i], 0));
+  }
 
-    for (let i = 0; i < A.length; i++) {
-      let sum = 0;
-      for (let j = 0; j < v.length; j++) {
-        sum += A[i][j] * v[j];
+  private matchPredictedWeather(
+    predictedTemp: number,
+    ranges: Record<string, WeatherRange>,
+  ) {
+    type Candidate = {
+      weather: string;
+      rangeWidth: number;
+      detail: WeatherRange;
+    };
+
+    const candidates: Candidate[] = [];
+
+    for (const [weather, r] of Object.entries(ranges)) {
+      if (predictedTemp >= r.min && predictedTemp <= r.max) {
+        candidates.push({
+          weather,
+          rangeWidth: r.max - r.min,
+          detail: r,
+        });
       }
-      result[i] = sum;
     }
 
-    return result;
+    if (candidates.length === 0) {
+      return {
+        weather: 'Unknown',
+        detail: null as WeatherRange | null,
+      };
+    }
+
+    candidates.sort((a, b) => a.rangeWidth - b.rangeWidth);
+
+    return {
+      weather: candidates[0].weather,
+      detail: candidates[0].detail,
+    };
   }
 
   async getDailyTemperatureMining(airportId: number) {
