@@ -10,42 +10,92 @@ export class WeatheranalyticsService {
     private readonly supabase: SupabaseClient,
   ) {}
 
-  async getAggregatedWeather(airportId: number) {
-    const intervals = ['minute', 'hour', 'day', 'month'];
+  async getAggregatedWeather(
+    airportId: number,
+    filters?: {
+      interval?: 'minute' | 'hour' | 'day' | 'month';
+      start_date?: string;
+      end_date?: string;
+      year?: number;
+      month?: number;
+      day?: number;
+      limit?: number;
+      page?: number;
+    },
+  ) {
+    const intervals = filters?.interval
+      ? [filters.interval]
+      : ['minute', 'hour', 'day', 'month'];
+
     const result = {};
 
+    const limit = filters?.limit ?? 200;
+    const page = filters?.page ?? 1;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
     for (const interval of intervals) {
-      const { data, error } = await this.supabase
+      let query = this.supabase
         .from('weather_aggregation')
-        .select('*')
+        .select(
+          'interval_start, avg_temp, max_temp, min_temp, avg_humidity, avg_pressure, avg_wind_speed, max_wind_speed, most_common_weather',
+          { count: 'exact' },
+        )
         .eq('airport_id', airportId)
-        .eq('interval_type', interval)
-        .order('interval_start', { ascending: true });
+        .eq('interval_type', interval);
+
+      // Filter timestamp range
+      if (filters?.start_date)
+        query = query.gte('interval_start', filters.start_date);
+      if (filters?.end_date)
+        query = query.lte('interval_start', filters.end_date);
+
+      // Filter per-year (cara benar)
+      if (filters?.year) {
+        query = query.gte('interval_start', `${filters.year}-01-01`);
+        query = query.lte('interval_start', `${filters.year}-12-31`);
+      }
+
+      // Filter per-month
+      if (filters?.year && filters?.month) {
+        const monthStr = String(filters.month).padStart(2, '0');
+        query = query.gte('interval_start', `${filters.year}-${monthStr}-01`);
+        query = query.lte('interval_start', `${filters.year}-${monthStr}-31`);
+      }
+
+      // Filter per-day
+      if (filters?.year && filters?.month && filters?.day) {
+        const m = String(filters.month).padStart(2, '0');
+        const d = String(filters.day).padStart(2, '0');
+        query = query.gte('interval_start', `${filters.year}-${m}-${d} 00:00`);
+        query = query.lte('interval_start', `${filters.year}-${m}-${d} 23:59`);
+      }
+
+      query = query
+        .order('interval_start', { ascending: true })
+        .range(from, to);
+
+      const { data, error, count } = await query;
 
       if (error) {
-        this.logger.error(`Error fetching ${interval} data`, error);
         result[interval] = { error: error.message };
       } else {
-        result[interval] = data.map((row) => ({
-          interval_start: row.interval_start,
-          avg_temp: row.avg_temp,
-          max_temp: row.max_temp,
-          min_temp: row.min_temp,
-          avg_humidity: row.avg_humidity,
-          avg_pressure: row.avg_pressure,
-          avg_wind_speed: row.avg_wind_speed,
-          max_wind_speed: row.max_wind_speed,
-          most_common_weather: row.most_common_weather,
-
-          // tambahan format agar mudah dibaca
-          label: this.formatLabel(interval, row.interval_start),
-        }));
+        result[interval] = {
+          page,
+          limit,
+          total: count,
+          rows: data.map((row) => ({
+            ...row,
+            label: this.formatLabel(interval, row.interval_start),
+          })),
+        };
       }
     }
 
     return {
       ok: true,
       airportId,
+      filters,
       data: result,
     };
   }
