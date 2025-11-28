@@ -217,17 +217,31 @@ export class WeatheranalyticsService {
       .not('weather_main', 'is', null)
       .order('data_timestamp', { ascending: true });
 
-    if (error) throw new Error('Gagal fetch data cuaca');
-    if (!data || data.length === 0)
+    if (error) {
+      throw new Error('Gagal fetch data cuaca');
+    }
+
+    if (!data || data.length === 0) {
       return { airportId, status: 'no_data', data: [] };
+    }
 
     const temps = data.map((d) => d.temp);
 
-    const cleanedTemps = this.removeOutliers(temps);
+    const cleanedTemps = this.removeOutliersSafe(temps);
 
-    const clusters = this.kMeans1D(cleanedTemps, 3);
+    if (cleanedTemps.length === 0) {
+      return {
+        airportId,
+        status: 'insufficient_clean_data',
+        total_raw: temps.length,
+        total_cleaned: 0,
+        clusters: [],
+        ranges_per_weather: {},
+      };
+    }
 
-    const weatherRanges = this.groupByWeatherMain(data);
+    const clusters = this.kMeans1DSafe(cleanedTemps, 3);
+    const weatherRanges = this.groupByWeatherMainSafe(data);
 
     return {
       airportId,
@@ -238,36 +252,50 @@ export class WeatheranalyticsService {
     };
   }
 
-  private removeOutliers(values: number[]) {
+  private removeOutliersSafe(values: number[]) {
     if (values.length < 5) return values;
 
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    const std = Math.sqrt(
-      values.map((v) => Math.pow(v - mean, 2)).reduce((a, b) => a + b, 0) /
-        values.length,
-    );
+
+    const variance =
+      values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+    const std = Math.sqrt(variance);
+
+    if (std === 0) {
+      return values; // <-- semua suhu sama → tidak bisa dihitung outlier
+    }
 
     const zFiltered = values.filter((v) => Math.abs((v - mean) / std) < 3);
+
+    if (zFiltered.length < 3) return zFiltered;
 
     const sorted = [...zFiltered].sort((a, b) => a - b);
     const q1 = sorted[Math.floor(sorted.length * 0.25)];
     const q3 = sorted[Math.floor(sorted.length * 0.75)];
     const iqr = q3 - q1;
+
+    if (iqr === 0) return zFiltered; // <-- data sangat mirip
+
     const lower = q1 - 1.5 * iqr;
     const upper = q3 + 1.5 * iqr;
 
-    const finalFiltered = zFiltered.filter((v) => v >= lower && v <= upper);
-
-    return finalFiltered;
+    return zFiltered.filter((v) => v >= lower && v <= upper);
   }
 
-  private kMeans1D(values: number[], k = 3) {
+  private kMeans1DSafe(values: number[], k = 3) {
+    if (values.length === 0) return [];
+
     if (values.length <= k) {
-      return values.map((v) => ({ center: v, values: [v] }));
+      return values.map((v) => ({
+        cluster: 0,
+        center: v,
+        min: v,
+        max: v,
+        sample_size: 1,
+      }));
     }
 
-    let centroids = values.sort((a, b) => a - b).slice(0, k);
-
+    let centroids = values.slice(0, k);
     let assignments = new Array(values.length).fill(0);
     let changed = true;
 
@@ -292,28 +320,43 @@ export class WeatheranalyticsService {
       }
     }
 
-    const result = centroids.map((c, idx) => {
+    return centroids.map((center, idx) => {
       const clusterVals = values.filter((_, i) => assignments[i] === idx);
+
+      if (clusterVals.length === 0) {
+        return {
+          cluster: idx,
+          center,
+          min: center,
+          max: center,
+          sample_size: 0,
+        };
+      }
+
       return {
         cluster: idx,
-        center: Number(c.toFixed(2)),
+        center: Number(center.toFixed(2)),
         min: Number(Math.min(...clusterVals).toFixed(2)),
         max: Number(Math.max(...clusterVals).toFixed(2)),
         sample_size: clusterVals.length,
       };
     });
-
-    return result;
   }
 
-  private groupByWeatherMain(data: { temp: number; weather_main: string }[]) {
+  private groupByWeatherMainSafe(
+    data: { temp: number; weather_main: string }[],
+  ) {
     const grouped: Record<
       string,
       { min: number; max: number; total: number; count: number }
     > = {};
 
     for (const row of data) {
+      if (!row.weather_main) continue;
+      if (typeof row.temp !== 'number') continue;
+
       const key = row.weather_main;
+
       if (!grouped[key]) {
         grouped[key] = {
           min: row.temp,
