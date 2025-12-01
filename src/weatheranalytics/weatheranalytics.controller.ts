@@ -10,7 +10,7 @@ export class WeatheranalyticsController {
   @ApiQuery({
     name: 'interval',
     required: false,
-    enum: ['minute', 'hour', 'day', 'month'],
+    enum: ['hour', 'day', 'month'],
   })
   @ApiQuery({ name: 'start_date', required: false, type: String })
   @ApiQuery({ name: 'end_date', required: false, type: String })
@@ -20,7 +20,7 @@ export class WeatheranalyticsController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getWeatherSummary(
     @Param('airportId', ParseIntPipe) airportId: number,
-    @Query('interval') interval?: 'minute' | 'hour' | 'day' | 'month',
+    @Query('interval') interval?: 'hour' | 'day' | 'month',
     @Query('start_date') start_date?: string,
     @Query('end_date') end_date?: string,
     @Query('year') year?: string,

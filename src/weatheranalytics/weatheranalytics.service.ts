@@ -13,7 +13,7 @@ export class WeatheranalyticsService {
   async getAggregatedWeather(
     airportId: number,
     filters?: {
-      interval?: 'minute' | 'hour' | 'day' | 'month';
+      interval?: 'hour' | 'day' | 'month';
       start_date?: string;
       end_date?: string;
       year?: number;
@@ -25,7 +25,7 @@ export class WeatheranalyticsService {
   ) {
     const intervals = filters?.interval
       ? [filters.interval]
-      : ['minute', 'hour', 'day', 'month'];
+      : ['hour', 'day', 'month'];
 
     const result = {};
 
@@ -50,7 +50,7 @@ export class WeatheranalyticsService {
       if (filters?.end_date)
         query = query.lte('interval_start', filters.end_date);
 
-      // Filter per-year (cara benar)
+      // Filter per-year
       if (filters?.year) {
         query = query.gte('interval_start', `${filters.year}-01-01`);
         query = query.lte('interval_start', `${filters.year}-12-31`);
@@ -100,7 +100,7 @@ export class WeatheranalyticsService {
     };
   }
 
-  formatLabel(interval: string, dateStr: string) {
+  private formatLabel(interval: string, dateStr: string) {
     const date = new Date(dateStr);
     const monthNames = [
       'Jan',
@@ -118,8 +118,6 @@ export class WeatheranalyticsService {
     ];
 
     switch (interval) {
-      case 'minute':
-        return `Menit ke-${date.getUTCMinutes()}`;
       case 'hour':
         return `Jam ke-${date.getUTCHours()}`;
       case 'day':
