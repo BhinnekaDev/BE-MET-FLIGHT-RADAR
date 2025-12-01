@@ -7,7 +7,6 @@ export class WeatheranalyticsController {
   constructor(private readonly weatherService: WeatheranalyticsService) {}
 
   @Get(':airportCode')
-  @ApiQuery({ name: 'airportCode', required: true, type: String })
   @ApiQuery({
     name: 'interval',
     required: false,
