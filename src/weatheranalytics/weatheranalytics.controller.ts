@@ -2,6 +2,8 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiQuery } from '@nestjs/swagger';
 import { WeatheranalyticsService } from './weatheranalytics.service';
 
+import { WeatherMiningResult } from './interfaces/weatheranalytics.interface';
+
 @Controller('weather-analytics')
 export class WeatheranalyticsController {
   constructor(private readonly weatherService: WeatheranalyticsService) {}
@@ -47,7 +49,9 @@ export class WeatheranalyticsController {
   }
 
   @Get('predict-range/:airportCode')
-  async predictRange(@Param('airportCode') airportCode: string) {
+  async predictRange(
+    @Param('airportCode') airportCode: string,
+  ): Promise<WeatherMiningResult> {
     return this.weatherService.getDailyTemperatureMining(airportCode);
   }
 }
