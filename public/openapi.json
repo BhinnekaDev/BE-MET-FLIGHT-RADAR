@@ -15,16 +15,16 @@
         ]
       }
     },
-    "/weather-analytics/{airportId}": {
+    "/weather-analytics/{airportCode}": {
       "get": {
         "operationId": "WeatheranalyticsController_getWeatherSummary",
         "parameters": [
           {
-            "name": "airportId",
+            "name": "airportCode",
             "required": true,
-            "in": "path",
+            "in": "query",
             "schema": {
-              "type": "number"
+              "type": "string"
             }
           },
           {
@@ -99,16 +99,16 @@
         ]
       }
     },
-    "/weather-analytics/predict/{airportId}": {
+    "/weather-analytics/predict/{airportCode}": {
       "get": {
         "operationId": "WeatheranalyticsController_predict",
         "parameters": [
           {
-            "name": "airportId",
+            "name": "airportCode",
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "string"
             }
           }
         ],
@@ -122,16 +122,16 @@
         ]
       }
     },
-    "/weather-analytics/predict-range/{airportId}": {
+    "/weather-analytics/predict-range/{airportCode}": {
       "get": {
         "operationId": "WeatheranalyticsController_predictRange",
         "parameters": [
           {
-            "name": "airportId",
+            "name": "airportCode",
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "string"
             }
           }
         ],
@@ -148,7 +148,24 @@
     "/locations/airports": {
       "get": {
         "operationId": "LocationsController_getAllAirportLocations",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -162,7 +179,55 @@
     "/locations/bmkg-radars": {
       "get": {
         "operationId": "LocationsController_getAllBMKGRadarSites",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "name",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Locations"
+        ]
+      }
+    },
+    "/locations/bengkulu": {
+      "get": {
+        "operationId": "LocationsController_getAllBengkuluLocations",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "city_name",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""

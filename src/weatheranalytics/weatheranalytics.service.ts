@@ -11,7 +11,7 @@ export class WeatheranalyticsService {
   ) {}
 
   async getAggregatedWeather(
-    airportId: number,
+    airportCode: string,
     filters?: {
       interval?: 'hour' | 'day' | 'month';
       start_date?: string;
@@ -41,7 +41,7 @@ export class WeatheranalyticsService {
           'interval_start, avg_temp, max_temp, min_temp, avg_humidity, avg_pressure, avg_wind_speed, max_wind_speed, most_common_weather',
           { count: 'exact' },
         )
-        .eq('airport_id', airportId)
+        .eq('airport_code', airportCode)
         .eq('interval_type', interval);
 
       // Filter timestamp range
@@ -94,7 +94,7 @@ export class WeatheranalyticsService {
 
     return {
       ok: true,
-      airportId,
+      airportCode,
       filters,
       data: result,
     };
@@ -129,39 +129,74 @@ export class WeatheranalyticsService {
     }
   }
 
-  async predictTomorrow(airportId: number) {
+  async predictTomorrow(airportCode: string) {
     const { data, error } = await this.supabase
       .from('weather_aggregation')
       .select('avg_temp, interval_start')
-      .eq('airport_id', airportId)
+      .eq('airport_code', airportCode)
       .order('interval_start', { ascending: true });
 
-    if (error) throw new Error('Supabase error: ' + error.message);
-
-    if (!data || data.length < 24) {
+    if (error) throw new Error(error.message);
+    if (!data || data.length < 24)
       throw new Error('Data tidak cukup untuk prediksi.');
-    }
 
     const temps = data.map((d) => Number(d.avg_temp));
     const indexes = data.map((_, i) => i + 1);
 
     const coeffs = this.safePolynomialRegression(indexes, temps, 2);
-    const predicted = this.predictPolynomial(coeffs, indexes.length + 1);
-    const predictedTemp = Number(predicted.toFixed(3));
+    const predictedTemp = Number(
+      this.predictPolynomial(coeffs, indexes.length + 1).toFixed(3),
+    );
 
-    const mining = await this.getDailyTemperatureMining(airportId);
+    const mining = await this.getDailyTemperatureMining(airportCode);
 
-    let predictedWeatherMain: string | null = null;
-
-    if (mining && mining.ranges_per_weather) {
-      predictedWeatherMain = this.pickWeatherMainByTemperature(
-        predictedTemp,
-        mining.ranges_per_weather,
-      );
+    if (!mining || !mining.ranges_per_weather) {
+      return {
+        airportCode,
+        predicted_temperature: predictedTemp,
+        predicted_weather_main: null,
+        model: 'poly_deg2',
+        coefficients: coeffs,
+        data_points: data.length,
+      };
     }
 
+    const tempRanges = this.mapRangesFor('temperature')(
+      mining.ranges_per_weather,
+    );
+    const windRanges = this.mapRangesFor('wind_speed')(
+      mining.ranges_per_weather,
+    );
+    const humidityRanges = this.mapRangesFor('humidity')(
+      mining.ranges_per_weather,
+    );
+
+    const predictedWind = mining.wind_avg ?? null;
+    const predictedHumidity = mining.humidity_avg ?? null;
+
+    const byTemp = this.pickWeatherMainByTemperature(predictedTemp, tempRanges);
+    const byWind =
+      predictedWind === null
+        ? null
+        : this.pickWeatherMainByWind(predictedWind, windRanges);
+    const byHumidity =
+      predictedHumidity === null
+        ? null
+        : this.pickWeatherMainByHumidity(predictedHumidity, humidityRanges);
+
+    const votes = [byTemp, byWind, byHumidity].filter((v) => v !== null);
+
+    const predictedWeatherMain =
+      votes.length === 0
+        ? null
+        : votes.sort(
+            (a, b) =>
+              votes.filter((v) => v === b).length -
+              votes.filter((v) => v === a).length,
+          )[0];
+
     return {
-      airportId,
+      airportCode,
       predicted_temperature: predictedTemp,
       predicted_weather_main: predictedWeatherMain,
       model: 'polynomial_regression_degree_2',
@@ -266,86 +301,145 @@ export class WeatheranalyticsService {
     return result;
   }
 
-  private pickWeatherMainByTemperature(
-    predictedTemp: number,
-    ranges: Record<
-      string,
-      { min: number; max: number; avg: number; count: number }
-    >,
-  ): string | null {
-    // kumpulkan candidate weather yang rentang suhunya cocok
-    const candidates: { key: string; diff: number }[] = [];
+  private mapRangesFor(field: 'temperature' | 'wind_speed' | 'humidity') {
+    return (ranges: any): Record<string, { min: number; max: number }> => {
+      const result: Record<string, { min: number; max: number }> = {};
 
-    for (const [key, range] of Object.entries(ranges)) {
-      if (predictedTemp >= range.min && predictedTemp <= range.max) {
-        const diff = Math.abs(predictedTemp - range.avg);
-        candidates.push({ key, diff });
+      for (const [weather, data] of Object.entries(ranges)) {
+        const entry = (data as any)[field];
+        if (entry?.min != null && entry?.max != null) {
+          result[weather] = { min: entry.min, max: entry.max };
+        }
       }
-    }
 
-    if (candidates.length > 0) {
-      return candidates.sort((a, b) => a.diff - b.diff)[0].key;
-    }
-
-    let dominant: string | null = null;
-    let maxCount = -1;
-
-    for (const [key, range] of Object.entries(ranges)) {
-      if (range.count > maxCount) {
-        maxCount = range.count;
-        dominant = key;
-      }
-    }
-
-    return dominant;
+      return result;
+    };
   }
 
-  async getDailyTemperatureMining(airportId: number) {
+  private pickWeatherMainByTemperature(
+    predictedTemp: number,
+    ranges: Record<string, { min: number; max: number }>,
+  ): string | null {
+    let bestWeather: string | null = null;
+    let smallestDistance = Infinity;
+
+    for (const [weather, range] of Object.entries(ranges)) {
+      const { min, max } = range;
+
+      if (predictedTemp >= min && predictedTemp <= max) {
+        return weather;
+      }
+
+      const center = (min + max) / 2;
+      const dist = Math.abs(predictedTemp - center);
+
+      if (dist < smallestDistance) {
+        smallestDistance = dist;
+        bestWeather = weather;
+      }
+    }
+
+    return bestWeather;
+  }
+
+  private pickWeatherMainByWind(
+    windSpeed: number,
+    ranges: Record<string, { min: number; max: number }>,
+  ): string | null {
+    let bestWeather: string | null = null;
+    let bestScore = Infinity;
+
+    for (const [weather, range] of Object.entries(ranges)) {
+      const center = (range.min + range.max) / 2;
+      const diff = Math.abs(windSpeed - center);
+
+      if (diff < bestScore) {
+        bestScore = diff;
+        bestWeather = weather;
+      }
+    }
+
+    return bestWeather;
+  }
+
+  private pickWeatherMainByHumidity(
+    humidity: number,
+    ranges: Record<string, { min: number; max: number }>,
+  ): string | null {
+    let bestWeather: string | null = null;
+    let bestScore = Infinity;
+
+    for (const [weather, range] of Object.entries(ranges)) {
+      const center = (range.min + range.max) / 2;
+      const diff = Math.abs(humidity - center);
+
+      if (diff < bestScore) {
+        bestScore = diff;
+        bestWeather = weather;
+      }
+    }
+
+    return bestWeather;
+  }
+
+  async getDailyTemperatureMining(airportCode: string) {
     const { data, error } = await this.supabase
       .from('weather')
-      .select('temp, weather_main, data_timestamp')
-      .eq('airport_id', airportId)
-      .not('temp', 'is', null)
-      .not('weather_main', 'is', null)
+      .select(
+        `
+      temp,
+      humidity,
+      wind_speed,
+      pressure,
+      weather_main,
+      data_timestamp
+    `,
+      )
+      .eq('airport_code', airportCode)
       .order('data_timestamp', { ascending: true });
 
     if (error) {
-      console.error('Supabase error:', error);
-      return {
-        airportId,
-        status: 'db_error',
-        message: error.message ?? 'Gagal fetch data cuaca',
-      };
+      return { airportCode, status: 'db_error', message: error.message };
     }
 
     if (!data || data.length === 0) {
-      return { airportId, status: 'no_data', data: [] };
+      return { airportCode, status: 'no_data', data: [] };
     }
 
-    const temps = data
-      .map((d) => d.temp)
-      .filter((t) => typeof t === 'number' && !isNaN(t));
-
-    if (temps.length === 0) {
-      return { airportId, status: 'no_valid_temperature', data: [] };
-    }
-
+    const temps = data.map((d) => d.temp).filter((n) => typeof n === 'number');
     const cleanedTemps = this.removeOutliers(temps);
+    const clusters =
+      cleanedTemps.length > 0 ? this.safeKMeans(cleanedTemps, 3) : [];
 
-    if (cleanedTemps.length === 0) {
-      return { airportId, status: 'all_cleaned_removed', data: [] };
-    }
+    const windData = data
+      .map((d) => d.wind_speed)
+      .filter((n) => typeof n === 'number');
+    const humidityData = data
+      .map((d) => d.humidity)
+      .filter((n) => typeof n === 'number');
+    const pressureData = data
+      .map((d) => d.pressure)
+      .filter((n) => typeof n === 'number');
 
-    const clusters = this.safeKMeans(cleanedTemps, 3);
+    const avgWind = windData.length
+      ? windData.reduce((a, b) => a + b, 0) / windData.length
+      : null;
+    const avgHumidity = humidityData.length
+      ? humidityData.reduce((a, b) => a + b, 0) / humidityData.length
+      : null;
+    const avgPressure = pressureData.length
+      ? pressureData.reduce((a, b) => a + b, 0) / pressureData.length
+      : null;
 
     const weatherRanges = this.groupByWeatherMain(data);
 
     return {
-      airportId,
-      total_raw: temps.length,
-      total_cleaned: cleanedTemps.length,
+      airportCode,
       clusters,
       ranges_per_weather: weatherRanges,
+      wind_avg: avgWind,
+      humidity_avg: avgHumidity,
+      pressure_avg: avgPressure,
     };
   }
 
@@ -438,40 +532,90 @@ export class WeatheranalyticsService {
     });
   }
 
-  private groupByWeatherMain(data: { temp: number; weather_main: string }[]) {
+  private safeMin(arr: number[]) {
+    return arr.length > 0 ? Number(Math.min(...arr).toFixed(2)) : null;
+  }
+
+  private safeMax(arr: number[]) {
+    return arr.length > 0 ? Number(Math.max(...arr).toFixed(2)) : null;
+  }
+
+  private safeAvg(arr: number[]) {
+    return arr.length > 0
+      ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2))
+      : null;
+  }
+
+  private groupByWeatherMain(
+    data: {
+      temp: number;
+      wind_speed?: number;
+      humidity?: number;
+      pressure?: number;
+      weather_main: string;
+    }[],
+  ) {
     const grouped: Record<
       string,
-      { min: number; max: number; total: number; count: number }
+      {
+        temp: number[];
+        wind_speed: number[];
+        humidity: number[];
+        pressure: number[];
+      }
     > = {};
 
     for (const row of data) {
-      if (!row || typeof row.temp !== 'number' || !row.weather_main) continue;
+      if (!row?.weather_main) continue;
 
       const key = row.weather_main;
 
       if (!grouped[key]) {
         grouped[key] = {
-          min: row.temp,
-          max: row.temp,
-          total: row.temp,
-          count: 1,
+          temp: [],
+          wind_speed: [],
+          humidity: [],
+          pressure: [],
         };
-      } else {
-        grouped[key].min = Math.min(grouped[key].min, row.temp);
-        grouped[key].max = Math.max(grouped[key].max, row.temp);
-        grouped[key].total += row.temp;
-        grouped[key].count += 1;
       }
+
+      if (typeof row.temp === 'number') grouped[key].temp.push(row.temp);
+      if (typeof row.wind_speed === 'number')
+        grouped[key].wind_speed.push(row.wind_speed);
+      if (typeof row.humidity === 'number')
+        grouped[key].humidity.push(row.humidity);
+      if (typeof row.pressure === 'number')
+        grouped[key].pressure.push(row.pressure);
     }
 
     return Object.fromEntries(
       Object.entries(grouped).map(([key, val]) => [
         key,
         {
-          min: Number(val.min.toFixed(2)),
-          max: Number(val.max.toFixed(2)),
-          avg: Number((val.total / val.count).toFixed(2)),
-          count: val.count,
+          temperature: {
+            min: this.safeMin(val.temp),
+            max: this.safeMax(val.temp),
+            avg: this.safeAvg(val.temp),
+            count: val.temp.length,
+          },
+          wind_speed: {
+            min: this.safeMin(val.wind_speed),
+            max: this.safeMax(val.wind_speed),
+            avg: this.safeAvg(val.wind_speed),
+            count: val.wind_speed.length,
+          },
+          humidity: {
+            min: this.safeMin(val.humidity),
+            max: this.safeMax(val.humidity),
+            avg: this.safeAvg(val.humidity),
+            count: val.humidity.length,
+          },
+          pressure: {
+            min: this.safeMin(val.pressure),
+            max: this.safeMax(val.pressure),
+            avg: this.safeAvg(val.pressure),
+            count: val.pressure.length,
+          },
         },
       ]),
     );
