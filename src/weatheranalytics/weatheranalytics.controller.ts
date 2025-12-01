@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiQuery } from '@nestjs/swagger';
 import { WeatheranalyticsService } from './weatheranalytics.service';
 
@@ -6,7 +6,8 @@ import { WeatheranalyticsService } from './weatheranalytics.service';
 export class WeatheranalyticsController {
   constructor(private readonly weatherService: WeatheranalyticsService) {}
 
-  @Get(':airportId')
+  @Get(':airportCode')
+  @ApiQuery({ name: 'airportCode', required: true, type: String })
   @ApiQuery({
     name: 'interval',
     required: false,
@@ -19,7 +20,7 @@ export class WeatheranalyticsController {
   @ApiQuery({ name: 'day', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getWeatherSummary(
-    @Param('airportId', ParseIntPipe) airportId: number,
+    @Param('airportCode') airportCode: string,
     @Query('interval') interval?: 'hour' | 'day' | 'month',
     @Query('start_date') start_date?: string,
     @Query('end_date') end_date?: string,
@@ -38,16 +39,16 @@ export class WeatheranalyticsController {
       limit: limit ? Number(limit) : undefined,
     };
 
-    return this.weatherService.getAggregatedWeather(airportId, filters);
+    return this.weatherService.getAggregatedWeather(airportCode, filters);
   }
 
-  @Get('predict/:airportId')
-  async predict(@Param('airportId', ParseIntPipe) airportId: number) {
-    return this.weatherService.predictTomorrow(airportId);
+  @Get('predict/:airportCode')
+  async predict(@Param('airportCode') airportCode: string) {
+    return this.weatherService.predictTomorrow(airportCode);
   }
 
-  @Get('predict-range/:airportId')
-  async predictRange(@Param('airportId', ParseIntPipe) airportId: number) {
-    return this.weatherService.getDailyTemperatureMining(airportId);
+  @Get('predict-range/:airportCode')
+  async predictRange(@Param('airportCode') airportCode: string) {
+    return this.weatherService.getDailyTemperatureMining(airportCode);
   }
 }
