@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { WeatherMiningResult } from './interfaces/weatheranalytics.interface';
 
 @Injectable()
 export class WeatheranalyticsService {
@@ -130,6 +131,7 @@ export class WeatheranalyticsService {
   }
 
   async predictTomorrow(airportCode: string) {
+    // --- Ambil data historis ---
     const { data, error } = await this.supabase
       .from('weather_aggregation')
       .select('avg_temp, interval_start')
@@ -137,10 +139,7 @@ export class WeatheranalyticsService {
       .not('avg_temp', 'is', null)
       .order('interval_start', { ascending: true });
 
-    if (error) {
-      this.logger.error('Error fetching aggregated weather data', error);
-      throw new Error(error.message);
-    }
+    if (error) throw new Error('Supabase error: ' + error.message);
     if (!data || data.length < 24)
       throw new Error('Data tidak cukup untuk prediksi.');
 
@@ -151,13 +150,15 @@ export class WeatheranalyticsService {
     if (temps.length < 24) {
       throw new Error('Data agregasi tidak cukup (setelah filter null).');
     }
-    const indexes = data.map((_, i) => i + 1);
+
+    const indexes = temps.map((_, i) => i + 1);
 
     const coeffs = this.safePolynomialRegression(indexes, temps, 2);
     const predictedTemp = Number(
       this.predictPolynomial(coeffs, indexes.length + 1).toFixed(3),
     );
 
+    // --- Ambil hasil mining ---
     const mining = await this.getDailyTemperatureMining(airportCode);
 
     if (!mining || !mining.ranges_per_weather) {
@@ -171,6 +172,7 @@ export class WeatheranalyticsService {
       };
     }
 
+    // --- Mapping range ---
     const tempRanges = this.mapRangesFor('temperature')(
       mining.ranges_per_weather,
     );
@@ -181,14 +183,16 @@ export class WeatheranalyticsService {
       mining.ranges_per_weather,
     );
 
-    const predictedWind = mining.wind_avg ?? null;
-    const predictedHumidity = mining.humidity_avg ?? null;
+    const predictedWind = mining.wind_avg;
+    const predictedHumidity = mining.humidity_avg;
 
     const byTemp = this.pickWeatherMainByTemperature(predictedTemp, tempRanges);
+
     const byWind =
       predictedWind === null
         ? null
         : this.pickWeatherMainByWind(predictedWind, windRanges);
+
     const byHumidity =
       predictedHumidity === null
         ? null
@@ -392,7 +396,9 @@ export class WeatheranalyticsService {
     return bestWeather;
   }
 
-  async getDailyTemperatureMining(airportCode: string) {
+  async getDailyTemperatureMining(
+    airportCode: string,
+  ): Promise<WeatherMiningResult> {
     const { data, error } = await this.supabase
       .from('weather')
       .select(
@@ -409,17 +415,32 @@ export class WeatheranalyticsService {
       .order('data_timestamp', { ascending: true });
 
     if (error) {
-      return { airportCode, status: 'db_error', message: error.message };
+      return {
+        airportCode,
+        clusters: [],
+        ranges_per_weather: null,
+        wind_avg: null,
+        humidity_avg: null,
+        pressure_avg: null,
+      };
     }
 
     if (!data || data.length === 0) {
-      return { airportCode, status: 'no_data', data: [] };
+      return {
+        airportCode,
+        clusters: [],
+        ranges_per_weather: null,
+        wind_avg: null,
+        humidity_avg: null,
+        pressure_avg: null,
+      };
     }
 
     const temps = data.map((d) => d.temp).filter((n) => typeof n === 'number');
     const cleanedTemps = this.removeOutliers(temps);
-    const clusters =
-      cleanedTemps.length > 0 ? this.safeKMeans(cleanedTemps, 3) : [];
+    const clusters = cleanedTemps.length
+      ? this.safeKMeans(cleanedTemps, 3)
+      : [];
 
     const windData = data
       .map((d) => d.wind_speed)
@@ -441,12 +462,12 @@ export class WeatheranalyticsService {
       ? pressureData.reduce((a, b) => a + b, 0) / pressureData.length
       : null;
 
-    const weatherRanges = this.groupByWeatherMain(data);
+    const ranges = this.groupByWeatherMain(data);
 
     return {
       airportCode,
       clusters,
-      ranges_per_weather: weatherRanges,
+      ranges_per_weather: ranges,
       wind_avg: avgWind,
       humidity_avg: avgHumidity,
       pressure_avg: avgPressure,
