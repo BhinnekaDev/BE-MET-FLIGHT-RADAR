@@ -134,13 +134,23 @@ export class WeatheranalyticsService {
       .from('weather_aggregation')
       .select('avg_temp, interval_start')
       .eq('airport_code', airportCode)
+      .not('avg_temp', 'is', null)
       .order('interval_start', { ascending: true });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      this.logger.error('Error fetching aggregated weather data', error);
+      throw new Error(error.message);
+    }
     if (!data || data.length < 24)
       throw new Error('Data tidak cukup untuk prediksi.');
 
-    const temps = data.map((d) => Number(d.avg_temp));
+    const temps = data
+      .map((d) => Number(d.avg_temp))
+      .filter((x) => typeof x === 'number' && !isNaN(x));
+
+    if (temps.length < 24) {
+      throw new Error('Data agregasi tidak cukup (setelah filter null).');
+    }
     const indexes = data.map((_, i) => i + 1);
 
     const coeffs = this.safePolynomialRegression(indexes, temps, 2);

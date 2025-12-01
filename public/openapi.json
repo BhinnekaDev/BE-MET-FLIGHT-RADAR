@@ -22,7 +22,7 @@
           {
             "name": "airportCode",
             "required": true,
-            "in": "query",
+            "in": "path",
             "schema": {
               "type": "string"
             }
