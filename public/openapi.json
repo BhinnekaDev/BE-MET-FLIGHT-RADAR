@@ -15,62 +15,6 @@
         ]
       }
     },
-    "/weather/fetch-now": {
-      "get": {
-        "operationId": "WeatherController_getSaveWeather",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Weather"
-        ]
-      }
-    },
-    "/weather/aggregate/minute": {
-      "get": {
-        "operationId": "WeatherController_aggregateMinute",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Weather"
-        ]
-      }
-    },
-    "/weather/aggregate/hour": {
-      "get": {
-        "operationId": "WeatherController_aggregateHour",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Weather"
-        ]
-      }
-    },
-    "/weather/aggregate/day": {
-      "get": {
-        "operationId": "WeatherController_aggregateDay",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Weather"
-        ]
-      }
-    },
     "/weather-analytics/{airportId}": {
       "get": {
         "operationId": "WeatheranalyticsController_getWeatherSummary",
@@ -89,7 +33,6 @@
             "in": "query",
             "schema": {
               "enum": [
-                "minute",
                 "hour",
                 "day",
                 "month"
