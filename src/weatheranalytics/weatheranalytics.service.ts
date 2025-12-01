@@ -131,92 +131,135 @@ export class WeatheranalyticsService {
   }
 
   async predictTomorrow(airportCode: string) {
-    // --- Ambil data historis ---
-    const { data, error } = await this.supabase
-      .from('weather_aggregation')
-      .select('avg_temp, interval_start')
-      .eq('airport_code', airportCode)
-      .not('avg_temp', 'is', null)
-      .order('interval_start', { ascending: true });
+    console.log('=== predictTomorrow START ===');
+    console.log('Airport:', airportCode);
 
-    if (error) throw new Error('Supabase error: ' + error.message);
-    if (!data || data.length < 24)
-      throw new Error('Data tidak cukup untuk prediksi.');
+    try {
+      console.log('Fetching aggregation data...');
+      const { data, error } = await this.supabase
+        .from('weather_aggregation')
+        .select('avg_temp, interval_start')
+        .eq('airport_code', airportCode)
+        .not('avg_temp', 'is', null)
+        .order('interval_start', { ascending: true });
 
-    const temps = data
-      .map((d) => Number(d.avg_temp))
-      .filter((x) => typeof x === 'number' && !isNaN(x));
+      if (error) {
+        console.error('❌ Supabase error on aggregation:', error);
+        throw new Error('Supabase error (aggregation): ' + error.message);
+      }
 
-    if (temps.length < 24) {
-      throw new Error('Data agregasi tidak cukup (setelah filter null).');
-    }
+      console.log('Aggregation rows:', data.length);
 
-    const indexes = temps.map((_, i) => i + 1);
+      if (!data || data.length < 24) {
+        console.error('❌ Aggregation insufficient rows:', data.length);
+        throw new Error('Data tidak cukup untuk prediksi (agg < 24).');
+      }
 
-    const coeffs = this.safePolynomialRegression(indexes, temps, 2);
-    const predictedTemp = Number(
-      this.predictPolynomial(coeffs, indexes.length + 1).toFixed(3),
-    );
+      const temps = data
+        .map((d) => Number(d.avg_temp))
+        .filter((x) => typeof x === 'number' && !isNaN(x));
 
-    // --- Ambil hasil mining ---
-    const mining = await this.getDailyTemperatureMining(airportCode);
+      console.log('Valid temp count:', temps.length);
 
-    if (!mining || !mining.ranges_per_weather) {
+      if (temps.length < 24) {
+        console.error('❌ Temps insufficient after filter:', temps.length);
+        throw new Error('Data agregasi tidak cukup setelah filter.');
+      }
+
+      const indexes = temps.map((_, i) => i + 1);
+
+      console.log('Running polynomial regression...');
+      const coeffs = this.safePolynomialRegression(indexes, temps, 2);
+      console.log('Regression coefficients:', coeffs);
+
+      const predictedTemp = Number(
+        this.predictPolynomial(coeffs, indexes.length + 1).toFixed(3),
+      );
+
+      console.log('Predicted temperature:', predictedTemp);
+
+      console.log('Fetching mining data...');
+      const mining = await this.getDailyTemperatureMining(airportCode);
+
+      console.log('Mining result:', mining);
+
+      if (!mining || !mining.ranges_per_weather) {
+        console.warn('⚠ No mining range. Returning temp prediction only.');
+        return {
+          airportCode,
+          predicted_temperature: predictedTemp,
+          predicted_weather_main: null,
+          model: 'poly_deg2',
+          coefficients: coeffs,
+          data_points: data.length,
+        };
+      }
+
+      console.log('Mapping ranges...');
+      const tempRanges = this.mapRangesFor('temperature')(
+        mining.ranges_per_weather,
+      );
+      const windRanges = this.mapRangesFor('wind_speed')(
+        mining.ranges_per_weather,
+      );
+      const humidityRanges = this.mapRangesFor('humidity')(
+        mining.ranges_per_weather,
+      );
+
+      console.log('Temp Ranges:', tempRanges);
+      console.log('Wind Ranges:', windRanges);
+      console.log('Humidity Ranges:', humidityRanges);
+
+      const predictedWind = mining.wind_avg;
+      const predictedHumidity = mining.humidity_avg;
+
+      console.log('Pred Wind / Humidity:', predictedWind, predictedHumidity);
+
+      const byTemp = this.pickWeatherMainByTemperature(
+        predictedTemp,
+        tempRanges,
+      );
+      const byWind =
+        predictedWind == null
+          ? null
+          : this.pickWeatherMainByWind(predictedWind, windRanges);
+      const byHumidity =
+        predictedHumidity == null
+          ? null
+          : this.pickWeatherMainByHumidity(predictedHumidity, humidityRanges);
+
+      console.log('Votes:', { byTemp, byWind, byHumidity });
+
+      const votes = [byTemp, byWind, byHumidity].filter((v) => v !== null);
+
+      const predictedWeatherMain =
+        votes.length === 0
+          ? null
+          : votes.sort(
+              (a, b) =>
+                votes.filter((v) => v === b).length -
+                votes.filter((v) => v === a).length,
+            )[0];
+
+      console.log('Final predicted weather:', predictedWeatherMain);
+
+      console.log('=== predictTomorrow END ===');
+
       return {
         airportCode,
         predicted_temperature: predictedTemp,
-        predicted_weather_main: null,
-        model: 'poly_deg2',
+        predicted_weather_main: predictedWeatherMain,
+        model: 'polynomial_regression_degree_2',
         coefficients: coeffs,
         data_points: data.length,
       };
+    } catch (err: any) {
+      console.error('🔥 ERROR in predictTomorrow:', err.message);
+      console.error(err.stack);
+      console.error('Full error object:', err);
+
+      throw new Error('predictTomorrow failed: ' + err.message);
     }
-
-    // --- Mapping range ---
-    const tempRanges = this.mapRangesFor('temperature')(
-      mining.ranges_per_weather,
-    );
-    const windRanges = this.mapRangesFor('wind_speed')(
-      mining.ranges_per_weather,
-    );
-    const humidityRanges = this.mapRangesFor('humidity')(
-      mining.ranges_per_weather,
-    );
-
-    const predictedWind = mining.wind_avg;
-    const predictedHumidity = mining.humidity_avg;
-
-    const byTemp = this.pickWeatherMainByTemperature(predictedTemp, tempRanges);
-
-    const byWind =
-      predictedWind === null
-        ? null
-        : this.pickWeatherMainByWind(predictedWind, windRanges);
-
-    const byHumidity =
-      predictedHumidity === null
-        ? null
-        : this.pickWeatherMainByHumidity(predictedHumidity, humidityRanges);
-
-    const votes = [byTemp, byWind, byHumidity].filter((v) => v !== null);
-
-    const predictedWeatherMain =
-      votes.length === 0
-        ? null
-        : votes.sort(
-            (a, b) =>
-              votes.filter((v) => v === b).length -
-              votes.filter((v) => v === a).length,
-          )[0];
-
-    return {
-      airportCode,
-      predicted_temperature: predictedTemp,
-      predicted_weather_main: predictedWeatherMain,
-      model: 'polynomial_regression_degree_2',
-      coefficients: coeffs,
-      data_points: data.length,
-    };
   }
 
   private safePolynomialRegression(
